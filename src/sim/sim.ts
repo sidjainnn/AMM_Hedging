@@ -7,7 +7,7 @@ import { RNG } from './rng';
 import { SyntheticPrice } from './price';
 import { MarketManager } from './market';
 import { HedgeEngine } from './hedging';
-import { runAgents } from './agents';
+import { makeAgents, type AgentEngine, type AgentModel } from './agents';
 import type { SimConfig, SimState } from './types';
 
 const TENOR_TICKS_8H = 28800; // 1h = 3600 ticks, so 8h = 28800 ticks
@@ -20,6 +20,7 @@ export class Simulation {
   private price!: SyntheticPrice;
   private mm!: MarketManager;
   private hedge!: HedgeEngine;
+  private agents!: AgentEngine;
   private recentDrift = 0;
   private btcSeries: SimState['btcSeries'] = [];
   private pnlSeries: SimState['pnlSeries'] = [];
@@ -52,6 +53,7 @@ export class Simulation {
       c.feeBps,
       c.fundingRate8h / TENOR_TICKS_8H
     );
+    this.agents = makeAgents(c.agentModel, this.rng);
     this.recentDrift = 0;
     this.btcSeries = [{ tick: 0, btc: this.price.spot, provenance: 'sim-ground-truth' }];
     this.pnlSeries = [];
@@ -70,6 +72,12 @@ export class Simulation {
   }
   setAgents(patch: Partial<Pick<SimConfig, 'noiseIntensity' | 'directionalIntensity' | 'arbIntensity'>>): void {
     Object.assign(this.cfg, patch);
+  }
+  setAgentModel(model: AgentModel): void {
+    this.cfg.agentModel = model;
+    // rebuild from the master seed stream (deterministic); market/hedge state
+    // is preserved so you can A/B mid-run.
+    this.agents = makeAgents(model, this.rng);
   }
   setHedgeDialB(h: number): void {
     this.cfg.hedgeDialB = h;
@@ -103,8 +111,7 @@ export class Simulation {
     for (const m of this.mm.markets) m.refreshQuote(this.tick, this.cfg.quote);
 
     // 4. agents generate flow
-    runAgents({
-      rng: this.rng.derive(`agents-${this.tick}`),
+    this.agents.step({
       markets: this.mm.markets,
       spot,
       estSigma: this.price.estSigma,

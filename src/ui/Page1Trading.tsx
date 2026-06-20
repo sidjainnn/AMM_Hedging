@@ -10,6 +10,7 @@ import {
 } from 'recharts';
 import type { Simulation } from '../sim/sim';
 import type { SimState, EngineKind, QuotingMode } from '../sim/types';
+import type { AgentModel } from '../sim/agents';
 import { Slider, Seg, Provenance } from './widgets';
 import { fmt, ticksToClock, cls } from './format';
 
@@ -101,6 +102,22 @@ export function Page1Trading({
 
         <div className="panel">
           <h3>Agent Mix <span className="hint">agents are the market</span></h3>
+          <Seg<AgentModel>
+            options={[
+              { v: 'behavioral', label: 'Behavioral' },
+              { v: 'simple', label: 'Simple (v1)' },
+            ]}
+            value={sim.cfg.agentModel}
+            onChange={(v) => {
+              sim.setAgentModel(v);
+              refresh();
+            }}
+          />
+          <p className="hint" style={{ margin: '8px 0 12px' }}>
+            {sim.cfg.agentModel === 'behavioral'
+              ? 'Heterogeneous population: bursty arrivals, heavy-tailed sizes, favorite-longshot / momentum / contrarian / informed.'
+              : 'Original v1 agents: noise / directional / arbitrageur. Kept for rollback.'}
+          </p>
           <Slider label="noise" value={sim.cfg.noiseIntensity} min={0} max={3} step={0.1}
             onChange={(v) => { sim.setAgents({ noiseIntensity: v }); refresh(); }} />
           <Slider label="directional (skew)" value={sim.cfg.directionalIntensity} min={0} max={3} step={0.1}

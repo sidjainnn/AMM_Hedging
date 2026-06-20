@@ -35,7 +35,10 @@ src/sim/                 deterministic simulation core (no React)
   market.ts              one binary market + MarketManager (rolling tenors,
                          strike ladder, order book, pair-mint / engine channels)
   price.ts               synthetic BTC GBM + EWMA est-σ
-  agents.ts              noise · directional · arbitrageur
+  agents/                swappable trader models (see below)
+    index.ts             AgentEngine interface + factory
+    simple.ts            original v1 (noise · directional · arbitrageur)
+    behavioral.ts        heterogeneous population (default)
   hedging.ts             aggregate δ, σ√τ flatten, books A/B/C, P&L decomposition
   sim.ts                 tick-loop orchestrator + static stress test
   config.ts              default scenario / tunables
@@ -69,6 +72,22 @@ A vs B isolates *policy*; A vs C isolates *deployment realism* (vol
 mis-estimation). All three share one market-making book and differ only in the
 hedge leg, so the P&L decomposition (spread capture · inventory · hedge · fees ·
 funding) is directly comparable.
+
+## Agent models (swappable, feed-free)
+
+Toggle on the Trading page; both reference only the synthetic spot + estimated σ
+(no external data feed).
+
+- **`behavioral`** (default) — a persistent population of ~95 heterogeneous
+  traders calibrated to documented prediction-market / retail stylized facts:
+  bursty (volatility-driven) arrivals, heavy-tailed (lognormal) order sizes,
+  patience (limit vs market), and archetypes noise / momentum / contrarian /
+  informed with a favorite-longshot bias. Produces dispersed, realistic prices.
+- **`simple`** — the original v1 agents (noise / directional / arbitrageur),
+  preserved verbatim for rollback and A/B comparison.
+
+Both are deterministic and net-profitable across seeds (8/8 in testing). A hard
+rollback point is also tagged in git (the initial snapshot commit).
 
 ## Determinism
 

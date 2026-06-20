@@ -32,6 +32,9 @@ export const defaultConfig: SimConfig = {
     { label: '30m', ticks: 1800 },
     { label: '1h', ticks: 3600 },
   ],
+  // 'behavioral' = heterogeneous trader population; 'simple' = original v1
+  // agents (rollback). Switchable live from the Trading page.
+  agentModel: 'behavioral',
   // Noise is symmetric churn → pays spread without net price displacement, so
   // it earns vig "for free". Directional/arb cause displacement = subsidy +
   // adverse selection (the cost). A healthy noise:toxic ratio is what makes a

@@ -115,6 +115,7 @@ export interface SimConfig {
   strikePcts: number[]; // e.g. [-0.03,-0.02,-0.01,0.01,0.02,0.03]
   tenors: { label: string; ticks: number }[];
   // agents
+  agentModel: 'simple' | 'behavioral';
   noiseIntensity: number;
   directionalIntensity: number;
   arbIntensity: number;
