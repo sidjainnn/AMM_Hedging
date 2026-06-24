@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Crypto Binary Prediction Market — Research Simulator
 
 A client-side TypeScript + React simulation of crypto binary prediction markets.
@@ -8,8 +7,7 @@ realistic order flow and skew, and tests a real-time hedging layer (three
 parallel books) against a synthetic BTC price. Crypto-only, no real money, no
 real venues — everything runs in-memory in the browser.
 
-Design specs live in the parent repo's `docs/` and `CLAUDE.md`. This package is
-the implementation.
+Design specs live in `docs/` and `CLAUDE.md`. This package is the implementation.
 
 ## Run
 
@@ -94,6 +92,3 @@ rollback point is also tagged in git (the initial snapshot commit).
 
 The entire run is reproducible from `config.seed`. Reset re-derives identical
 state; change the seed in the top bar to A/B different paths.
-=======
-# AMM_Hedging
->>>>>>> origin/main
