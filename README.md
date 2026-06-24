@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Crypto Binary Prediction Market — Research Simulator
 
 A client-side TypeScript + React simulation of crypto binary prediction markets.
@@ -93,3 +94,6 @@ rollback point is also tagged in git (the initial snapshot commit).
 
 The entire run is reproducible from `config.seed`. Reset re-derives identical
 state; change the seed in the top bar to A/B different paths.
+=======
+# AMM_Hedging
+>>>>>>> origin/main
