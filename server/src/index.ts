@@ -3,7 +3,7 @@ import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import http from 'node:http';
 import { config } from './config';
-import { getMarkPrice } from './binance';
+import { getSpotPrice } from './binance';
 import { Runner } from './runner';
 
 async function main() {
@@ -11,8 +11,8 @@ async function main() {
   console.log(`[amm-server] DRY_RUN=${config.dryRun}  HEDGE_ENABLED=${config.hedgeEnabled}  keys=${config.hasKeys()}`);
   if (!config.dryRun) console.log('[amm-server] ⚠️  DRY_RUN is OFF — real DEMO orders will be sent when hedging is enabled.');
 
-  const initial = await getMarkPrice();
-  console.log(`[amm-server] initial mark price ${config.symbol} = ${initial}`);
+  const initial = await getSpotPrice();
+  console.log(`[amm-server] initial spot price ${config.symbol} = ${initial}`);
   const runner = new Runner(initial);
 
   const app = express();
@@ -20,7 +20,7 @@ async function main() {
   app.use(express.json());
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, dryRun: config.dryRun }));
-  app.get('/api/price', (_req, res) => res.json({ price: runner.markPrice, symbol: config.symbol }));
+  app.get('/api/price', (_req, res) => res.json({ price: runner.spotPrice, symbol: config.symbol }));
   app.get('/api/state', (_req, res) => res.json(runner.getState()));
   app.post('/api/hedge/enable', (req, res) => {
     const on = !!req.body?.enabled;

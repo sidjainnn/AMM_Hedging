@@ -1,24 +1,41 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { SimState } from '../sim/types';
 
-// Live backend (server-side sim driven by the Binance demo feed). WebSocket
-// with a polling fallback. The backend never exposes API secrets.
-const BACKEND = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8787';
+const BACKEND =
+  (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8787';
+
 const WS_URL = BACKEND.replace(/^http/, 'ws') + '/ws';
 
+/**
+ * LIVE STATE (UPDATED MODEL)
+ * spotPrice → UI display (Binance spot)
+ * futuresMarkPrice → hedging + PnL engine
+ */
 export interface LiveInfo {
-  markPrice: number;
+  spotPrice: number;
+  futuresMarkPrice: number;
+
   feedError: string | null;
   symbol: string;
   venue: string;
   dryRun: boolean;
   hasKeys: boolean;
+
   hedgeEnabled: boolean;
   livePosition: number;
   maxPositionBtc: number;
+
   hedgeError: string | null;
-  hedgeLog: { ts: number; targetUnits: number; positionUnits: number; note: string; order: { side: string; qty: number; dryRun: boolean } | null }[];
+
+  hedgeLog: {
+    ts: number;
+    targetUnits: number;
+    positionUnits: number;
+    note: string;
+    order: { side: string; qty: number; dryRun: boolean } | null;
+  }[];
 }
+
 export type LiveState = SimState & { live: LiveInfo };
 
 export function useLiveBackend(active: boolean) {
@@ -32,18 +49,22 @@ export function useLiveBackend(active: boolean) {
       setConnected(false);
       return;
     }
+
     let poll: ReturnType<typeof setInterval> | null = null;
     let closed = false;
 
     const startPolling = () => {
       if (poll) return;
+
       poll = setInterval(async () => {
         try {
           const r = await fetch(`${BACKEND}/api/state`);
-          if (r.ok) {
-            setState(await r.json());
-            setConnected(true);
-          }
+          if (!r.ok) return;
+
+          const data = await r.json();
+
+          setState(data);
+          setConnected(true);
         } catch {
           setConnected(false);
         }
@@ -53,10 +74,29 @@ export function useLiveBackend(active: boolean) {
     try {
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
+
       ws.onopen = () => setConnected(true);
-      ws.onmessage = (e) => setState(JSON.parse(e.data));
-      ws.onclose = () => { if (!closed) { setConnected(false); startPolling(); } };
-      ws.onerror = () => { setConnected(false); startPolling(); };
+
+      ws.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          setState(data);
+        } catch {
+          // ignore malformed updates
+        }
+      };
+
+      ws.onclose = () => {
+        if (!closed) {
+          setConnected(false);
+          startPolling();
+        }
+      };
+
+      ws.onerror = () => {
+        setConnected(false);
+        startPolling();
+      };
     } catch {
       startPolling();
     }
@@ -75,7 +115,9 @@ export function useLiveBackend(active: boolean) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled }),
       });
-    } catch { /* ignore */ }
+    } catch {
+      // ignore
+    }
   }, []);
 
   return { state, connected, setHedge, backend: BACKEND };
