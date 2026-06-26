@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { useSimulation } from './ui/useSimulation';
 import { Page1Trading } from './ui/Page1Trading';
 import { Page2Hedge } from './ui/Page2Hedge';
+import { Page3Backtest } from './ui/Page3Backtest';
 import { fmt } from './ui/format';
 
 export default function App() {
   const { sim, state, running, setRunning, speed, setSpeed, seed, setSeed, reset, sync } =
     useSimulation();
-  const [page, setPage] = useState<1 | 2>(1);
+  const [page, setPage] = useState<1 | 2 | 3>(1);
 
   return (
     <div className="app">
@@ -23,6 +24,9 @@ export default function App() {
           </button>
           <button className={'tab ' + (page === 2 ? 'active' : '')} onClick={() => setPage(2)}>
             Hedge Overview
+          </button>
+          <button className={'tab ' + (page === 3 ? 'active' : '')} onClick={() => setPage(3)}>
+            Backtest
           </button>
         </div>
 
@@ -58,11 +62,9 @@ export default function App() {
         </div>
       </div>
 
-      {page === 1 ? (
-        <Page1Trading sim={sim} state={state} refresh={sync} />
-      ) : (
-        <Page2Hedge sim={sim} state={state} refresh={sync} />
-      )}
+      {page === 1 && <Page1Trading sim={sim} state={state} refresh={sync} />}
+      {page === 2 && <Page2Hedge sim={sim} state={state} refresh={sync} />}
+      {page === 3 && <Page3Backtest />}
     </div>
   );
 }
