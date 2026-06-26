@@ -105,7 +105,9 @@ export interface SimConfig {
   tickMs: number;
   engine: EngineParams;
   quote: QuoteParams;
-  // synthetic BTC GBM (sim-ground-truth)
+  // synthetic BTC GBM (sim-ground-truth). When externalPrice is true the GBM is
+  // bypassed and a live feed drives the price instead (deployment-available).
+  externalPrice?: boolean;
   btcStart: number;
   btcVolPerTick: number; // TRUE sigma
   btcDriftPerTick: number;

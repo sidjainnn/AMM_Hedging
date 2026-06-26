@@ -45,6 +45,7 @@ export class Simulation {
       c.jumpChance,
       c.jumpSize
     );
+    if (c.externalPrice) this.price.external = true;
     this.mm = new MarketManager(c.tenors, c.strikePcts, c.engine);
     this.mm.seedAll(0, this.price.spot);
     this.hedge = new HedgeEngine(
@@ -72,6 +73,10 @@ export class Simulation {
   }
   setAgents(patch: Partial<Pick<SimConfig, 'noiseIntensity' | 'directionalIntensity' | 'arbIntensity'>>): void {
     Object.assign(this.cfg, patch);
+  }
+  // push the latest live price (external-price mode); consumed next step().
+  feedPrice(spot: number): void {
+    this.price.feed(spot);
   }
   setAgentModel(model: AgentModel): void {
     this.cfg.agentModel = model;

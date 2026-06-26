@@ -13,10 +13,16 @@ export class SyntheticPrice {
   private lambda = 0.94; // EWMA decay
   private lastLogRet = 0;
 
+  // external (live-feed) mode: when true, step() consumes a fed real price
+  // instead of generating a GBM walk. estSigma is then realised from the real
+  // returns (still deployment-available).
+  external = false;
+  private pendingSpot: number | null = null;
+
   constructor(
     private rng: RNG,
     start: number,
-    private volPerTick: number, // TRUE sigma (sim-ground-truth)
+    private volPerTick: number, // TRUE sigma (sim-ground-truth, GBM mode only)
     private driftPerTick: number,
     private jumpChance: number,
     private jumpSize: number
@@ -25,8 +31,17 @@ export class SyntheticPrice {
     this.estSigma = volPerTick; // seed estimate at true (warmup converges)
   }
 
+  // push the latest live price; consumed on the next step() in external mode.
+  feed(spot: number): void {
+    if (spot > 0) this.pendingSpot = spot;
+  }
+
   // advance one tick of GBM with optional jumps; update EWMA estimate.
   step(): void {
+    if (this.external) {
+      this.stepExternal();
+      return;
+    }
     const z = this.rng.normal();
     let logRet = (this.driftPerTick - 0.5 * this.volPerTick ** 2) +
       this.volPerTick * z;
@@ -40,6 +55,19 @@ export class SyntheticPrice {
     const varEst =
       this.lambda * this.estSigma ** 2 + (1 - this.lambda) * r2;
     this.estSigma = Math.sqrt(varEst);
+  }
+
+  // Live mode: adopt the fed price; realise est-vol from the real return.
+  private stepExternal(): void {
+    if (this.pendingSpot == null) {
+      this.lastLogRet = 0;
+      return; // no fresh price yet → hold
+    }
+    const logRet = Math.log(this.pendingSpot / this.spot);
+    this.spot = this.pendingSpot;
+    this.lastLogRet = logRet;
+    const r2 = logRet * logRet;
+    this.estSigma = Math.sqrt(this.lambda * this.estSigma ** 2 + (1 - this.lambda) * r2);
   }
 
   get lastReturn(): number {
