@@ -29,18 +29,11 @@ export class Runner {
   }
 
   start(onTick: () => void): void {
-    console.log("RUNNER START CALLED");
     this.onTick = onTick;
-
-    setInterval(() => {
-      console.log("TICK TIMER FIRED");
-      void this.tick();
-    }, 1000);
+    setInterval(() => void this.tick(), 1000);
   }
 
   private async tick(): Promise<void> {
-    console.log("tick", new Date().toISOString());
-
     try {
       // fetch both feeds in parallel (important for freshness)
       const [spot, futures] = await Promise.all([
