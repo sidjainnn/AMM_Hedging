@@ -48,6 +48,7 @@ export function runBacktest(opts: {
     for (const seed of seeds) {
       const cfg: SimConfig = {
         ...defaultConfig,
+        externalPrice: false, // backtest can't replay a live feed
         seed,
         engine: { ...defaultConfig.engine, kind: engine },
         quote:

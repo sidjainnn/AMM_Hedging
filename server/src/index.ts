@@ -20,6 +20,7 @@ async function main() {
   app.use(express.json());
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, dryRun: config.dryRun }));
+  app.get('/api/price', (_req, res) => res.json({ price: runner.markPrice, symbol: config.symbol }));
   app.get('/api/state', (_req, res) => res.json(runner.getState()));
   app.post('/api/hedge/enable', (req, res) => {
     const on = !!req.body?.enabled;

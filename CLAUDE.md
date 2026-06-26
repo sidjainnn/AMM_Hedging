@@ -3,8 +3,9 @@
 A **research dashboard + simulation** for crypto binary prediction markets. It compares
 pricing engines (LMSR / CPMM / LS-LMSR) under a Stoikov/manual-spread quoting layer, runs
 simulated agents that create realistic order flow and skew, and tests a **real-time hedging
-layer** against a synthetic BTC price. Crypto-only. No real money, no real venues —
-everything is simulated in-memory.
+layer** against the **live Binance (demo) BTC feed**. Crypto-only. No real money — it runs
+against the Binance **demo** venue (paper). The BTC underlying is the live Binance price;
+the binary markets and the hedge book are simulated/paper.
 
 This file is loaded every session: keep it lean. Detailed specs live in `docs/` and should be
 read on demand (see pointers below).
@@ -16,13 +17,17 @@ read on demand (see pointers below).
   Extract a server later only if real data/MCP is ever added.
 
 ## Golden rules (never violate)
-1. **Feed-free pricing.** The pricing engine uses NO external price as an anchor. Price is a
-   function of inventory `q` only. The synthetic BTC price is NOT a pricing input.
+1. **Feed from Binance for the underlying; inventory-priced binaries.** The BTC underlying
+   price is the **live Binance feed** — the single source of truth for marking P&L, settling
+   markets, and informing agents (synthetic GBM is off). The binary **pricing engine still
+   prices off inventory `q` only** (flow-based discovery); it does NOT anchor quotes to the
+   feed. (If you ever want the engine itself anchored to Binance, that replaces the AMM
+   mechanism — a separate, deliberate change.)
 2. **Only trades vs the engine move price.** Order placement alone does not. `q` is the price state.
 3. **User↔user trades are price-neutral** (pair-minting). Only user↔engine flow (incl. arbitrage)
    moves price. Price discovery comes from flow + arbitrage, not from the house anchoring.
-4. **No real money / no real venues.** Hedge positions are in-memory notionals marked against the
-   synthetic BTC price, with *modeled* fees + funding.
+4. **No real money; demo venue only.** Hedging runs against the Binance **demo** futures venue
+   (paper). Production hosts are hard-blocked in the server; secrets live only in `server/.env`.
 5. **Quoting overlay never mutates `q`.** Stoikov/spread change displayed quotes only.
 6. **Sim vs deployment honesty.** Tag every input as `sim-ground-truth` (synthetic price → true
    delta/mark) or `deployment-available` (σ/τ/own-flow only). Never let a "deployable" mechanism

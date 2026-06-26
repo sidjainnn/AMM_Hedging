@@ -7,6 +7,9 @@ export const TICKS_PER_8H = (8 * 3600 * 1000) / 1000; // at 1s/tick
 export const defaultConfig: SimConfig = {
   seed: 42,
   tickMs: 250, // sim runs 4x display speed; τ still measured in ticks
+  // BTC price now comes from the live Binance feed (synthetic GBM off).
+  // Headless tools (backtest/validate) override this back to false.
+  externalPrice: true,
   // b0=110: the LMSR loss bound is b·ln2 per resolved market (~76 here) — the
   // liquidity *subsidy* the house pays for feed-free price discovery. The vig
   // (spread) must out-earn it to break even, so b is kept moderate.

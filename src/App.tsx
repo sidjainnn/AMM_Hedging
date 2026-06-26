@@ -7,7 +7,7 @@ import { Page4Live } from './ui/Page4Live';
 import { fmt } from './ui/format';
 
 export default function App() {
-  const { sim, state, running, setRunning, speed, setSpeed, seed, setSeed, reset, sync } =
+  const { sim, state, running, setRunning, speed, setSpeed, seed, setSeed, reset, sync, priceSource } =
     useSimulation();
   const [page, setPage] = useState<1 | 2 | 3 | 4>(1);
 
@@ -39,6 +39,11 @@ export default function App() {
         <div className="controls">
           <div className="pill">tick <b>{state.tick}</b></div>
           <div className="pill">BTC <b>${fmt(state.btc, 0)}</b></div>
+          {priceSource && (
+            <span className={'tag ' + (priceSource === 'binance' || priceSource === 'backend' ? 'deploy' : 'sim')}>
+              {priceSource === 'binance' ? 'live · binance' : priceSource === 'backend' ? 'live · backend' : priceSource === 'connecting' ? 'connecting…' : 'feed offline'}
+            </span>
+          )}
           <button className={'btn ' + (running ? '' : 'primary')} onClick={() => setRunning((r) => !r)}>
             {running ? '⏸ Pause' : '▶ Play'}
           </button>

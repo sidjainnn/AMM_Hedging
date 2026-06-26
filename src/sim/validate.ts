@@ -7,9 +7,12 @@
 //     --outfile=/tmp/validate.mjs && node /tmp/validate.mjs
 
 import { Simulation } from './sim';
-import { defaultConfig } from './config';
+import { defaultConfig as _dc } from './config';
 import { Market } from './market';
 import type { SimConfig } from './types';
+
+// validation runs headless — force synthetic price (no live feed available)
+const defaultConfig = { ..._dc, externalPrice: false };
 
 let failures = 0;
 function check(name: string, pass: boolean, detail = '') {
