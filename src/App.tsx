@@ -45,8 +45,8 @@ export default function App() {
           <div className="pill">tick <b>{state.tick}</b></div>
           <div className="pill">BTC <b>${fmt(state.btc, 0)}</b></div>
           {priceSource && (
-            <span className={'tag ' + (priceSource === 'binance' || priceSource === 'backend' ? 'deploy' : 'sim')}>
-              {priceSource === 'binance' ? 'live · binance' : priceSource === 'backend' ? 'live · backend' : priceSource === 'connecting' ? 'connecting…' : 'feed offline'}
+            <span className={'tag ' + (priceSource === 'live' ? 'deploy' : 'sim')}>
+              {priceSource === 'live' ? 'live · binance' : priceSource === 'connecting' ? 'connecting…' : 'feed offline'}
             </span>
           )}
           <button className={'btn ' + (running ? '' : 'primary')} onClick={() => setRunning((r) => !r)}>

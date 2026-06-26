@@ -18,7 +18,7 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
   const [size, setSize] = useState(10);
   const [pos, setPos] = useState<UserPos>({ marketId: '', yes: 0, no: 0, cost: 0 });
   const [realized, setRealized] = useState(0);
-  const [showControls, setShowControls] = useState(false);
+  const [showControls, setShowControls] = useState(true);
 
   // per-market probability history (resets each roll)
   const histRef = useRef<{ t: number; yes: number }[]>([]);
