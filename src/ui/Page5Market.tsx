@@ -3,8 +3,10 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import type { Simulation } from '../sim/sim';
-import type { SimState, Side } from '../sim/types';
+import type { SimState, Side, EngineKind, QuotingMode } from '../sim/types';
+import type { AgentModel } from '../sim/agents';
 import { fmt, usd2, cls, ticksToClock } from './format';
+import { Seg, Slider } from './widgets';
 
 const TENOR = '5m';
 
@@ -16,6 +18,7 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
   const [size, setSize] = useState(10);
   const [pos, setPos] = useState<UserPos>({ marketId: '', yes: 0, no: 0, cost: 0 });
   const [realized, setRealized] = useState(0);
+  const [showControls, setShowControls] = useState(false);
 
   // per-market probability history (resets each roll)
   const histRef = useRef<{ t: number; yes: number }[]>([]);
@@ -96,6 +99,69 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
             </div>
           </div>
         </div>
+      </div>
+
+      {/* research controls — engine / quoting / agents */}
+      <div className="panel">
+        <h3 style={{ display: 'flex', justifyContent: 'space-between', cursor: 'pointer', margin: 0 }}
+          onClick={() => setShowControls((s) => !s)}>
+          <span>Market controls <span className="hint">· AMM engine · quoting · agents</span></span>
+          <span className="hint">{showControls ? '▲ hide' : '▼ show'}</span>
+        </h3>
+        {showControls && (
+          <div className="row" style={{ gap: 24, marginTop: 12 }}>
+            {/* engine */}
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div className="hint" style={{ marginBottom: 6 }}>Pricing engine <span className="hint">(switching resets inventory)</span></div>
+              <Seg<EngineKind>
+                options={[{ v: 'LMSR', label: 'LMSR' }, { v: 'CPMM', label: 'CPMM' }, { v: 'LS-LMSR', label: 'LS-LMSR' }]}
+                value={sim.cfg.engine.kind}
+                onChange={(v) => { sim.setEngineKind(v); refresh(); }}
+              />
+            </div>
+            {/* quoting */}
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div className="hint" style={{ marginBottom: 6 }}>Quoting overlay</div>
+              <Seg<QuotingMode>
+                options={[{ v: 'manual', label: 'Manual' }, { v: 'stoikov', label: 'Stoikov' }]}
+                value={sim.cfg.quote.mode}
+                onChange={(v) => { sim.setQuote({ mode: v }); refresh(); }}
+              />
+              <div style={{ marginTop: 10 }}>
+                {sim.cfg.quote.mode === 'manual' ? (
+                  <Slider label="half-spread" value={sim.cfg.quote.manualHalfSpread} min={0.002} max={0.08} step={0.002}
+                    fmtVal={(x) => fmt(x * 100, 1) + '¢'} onChange={(v) => { sim.setQuote({ manualHalfSpread: v }); refresh(); }} />
+                ) : (
+                  <>
+                    <Slider label="γ risk aversion" value={sim.cfg.quote.gamma} min={0.1} max={3} step={0.1}
+                      onChange={(v) => { sim.setQuote({ gamma: v }); refresh(); }} />
+                    <Slider label="σ volatility" value={sim.cfg.quote.sigma} min={0.01} max={0.2} step={0.005}
+                      onChange={(v) => { sim.setQuote({ sigma: v }); refresh(); }} />
+                    <Slider label="k depth" value={sim.cfg.quote.k} min={5} max={200} step={5}
+                      onChange={(v) => { sim.setQuote({ k: v }); refresh(); }} />
+                  </>
+                )}
+              </div>
+            </div>
+            {/* agents */}
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div className="hint" style={{ marginBottom: 6 }}>Agents</div>
+              <Seg<AgentModel>
+                options={[{ v: 'behavioral', label: 'Behavioral' }, { v: 'simple', label: 'Simple (v1)' }]}
+                value={sim.cfg.agentModel}
+                onChange={(v) => { sim.setAgentModel(v); refresh(); }}
+              />
+              <div style={{ marginTop: 10 }}>
+                <Slider label="noise" value={sim.cfg.noiseIntensity} min={0} max={3} step={0.1}
+                  onChange={(v) => { sim.setAgents({ noiseIntensity: v }); refresh(); }} />
+                <Slider label="directional" value={sim.cfg.directionalIntensity} min={0} max={3} step={0.1}
+                  onChange={(v) => { sim.setAgents({ directionalIntensity: v }); refresh(); }} />
+                <Slider label="arbitrageur" value={sim.cfg.arbIntensity} min={0} max={3} step={0.1}
+                  onChange={(v) => { sim.setAgents({ arbIntensity: v }); refresh(); }} />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* YES/NO big prices */}
