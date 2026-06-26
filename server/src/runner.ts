@@ -31,6 +31,9 @@ export class Runner {
   start(onTick: () => void): void {
     this.onTick = onTick;
     setInterval(() => void this.tick(), 1000);
+    // keep the displayed demo position fresh even when not actively hedging
+    void this.hedger.refreshPosition();
+    setInterval(() => void this.hedger.refreshPosition(), 15000);
   }
 
   private async tick(): Promise<void> {
