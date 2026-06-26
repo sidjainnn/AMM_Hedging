@@ -78,6 +78,14 @@ export class Simulation {
   feedPrice(spot: number): void {
     this.price.feed(spot);
   }
+
+  // a user (you) buys shares against the engine in a specific market.
+  userTrade(marketId: string, side: 'YES' | 'NO', shares: number): boolean {
+    const m = this.mm.markets.find((x) => x.id === marketId);
+    if (!m || shares <= 0) return false;
+    m.executeEngineBuy(side, shares, 'you', this.tick);
+    return true;
+  }
   setAgentModel(model: AgentModel): void {
     this.cfg.agentModel = model;
     // rebuild from the master seed stream (deterministic); market/hedge state

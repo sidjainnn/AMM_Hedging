@@ -4,12 +4,14 @@ import { Page1Trading } from './ui/Page1Trading';
 import { Page2Hedge } from './ui/Page2Hedge';
 import { Page3Backtest } from './ui/Page3Backtest';
 import { Page4Live } from './ui/Page4Live';
+import { Page5Market } from './ui/Page5Market';
+import { ErrorBoundary } from './ui/ErrorBoundary';
 import { fmt } from './ui/format';
 
 export default function App() {
   const { sim, state, running, setRunning, speed, setSpeed, seed, setSeed, reset, sync, priceSource } =
     useSimulation();
-  const [page, setPage] = useState<1 | 2 | 3 | 4>(1);
+  const [page, setPage] = useState<1 | 2 | 3 | 4 | 5>(5);
 
   return (
     <div className="app">
@@ -20,6 +22,9 @@ export default function App() {
         </div>
 
         <div className="tabs">
+          <button className={'tab ' + (page === 5 ? 'active' : '')} onClick={() => setPage(5)}>
+            5m Market
+          </button>
           <button className={'tab ' + (page === 1 ? 'active' : '')} onClick={() => setPage(1)}>
             Trading
           </button>
@@ -75,6 +80,7 @@ export default function App() {
       {page === 2 && <Page2Hedge sim={sim} state={state} refresh={sync} />}
       {page === 3 && <Page3Backtest />}
       {page === 4 && <Page4Live />}
+      {page === 5 && <ErrorBoundary><Page5Market sim={sim} state={state} refresh={sync} /></ErrorBoundary>}
     </div>
   );
 }

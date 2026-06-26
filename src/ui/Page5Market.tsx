@@ -1,0 +1,200 @@
+import { useEffect, useRef, useState } from 'react';
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
+} from 'recharts';
+import type { Simulation } from '../sim/sim';
+import type { SimState, Side } from '../sim/types';
+import { fmt, usd2, cls, ticksToClock } from './format';
+
+const TENOR = '5m';
+
+interface UserPos { marketId: string; yes: number; no: number; cost: number; }
+
+export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: SimState; refresh: () => void; }) {
+  const mkt = state.markets.find((m) => m.tenorLabel === TENOR) ?? null;
+
+  const [size, setSize] = useState(10);
+  const [pos, setPos] = useState<UserPos>({ marketId: '', yes: 0, no: 0, cost: 0 });
+  const [realized, setRealized] = useState(0);
+
+  // per-market probability history (resets each roll)
+  const histRef = useRef<{ t: number; yes: number }[]>([]);
+  const [, force] = useState(0);
+  const prevRef = useRef<{ id: string; strike: number } | null>(null);
+
+  useEffect(() => {
+    if (!mkt) return;
+    const prev = prevRef.current;
+    // detect a roll: market id changed -> settle the old position, reset chart
+    if (prev && prev.id !== mkt.id) {
+      if (pos.marketId === prev.id && (pos.yes > 0 || pos.no > 0)) {
+        const outcomeYes = state.btc > prev.strike;
+        const payout = outcomeYes ? pos.yes : pos.no;
+        setRealized((r) => r + (payout - pos.cost));
+      }
+      setPos({ marketId: mkt.id, yes: 0, no: 0, cost: 0 });
+      histRef.current = [];
+    } else if (pos.marketId === '') {
+      setPos({ marketId: mkt.id, yes: 0, no: 0, cost: 0 });
+    }
+    prevRef.current = { id: mkt.id, strike: mkt.strike };
+
+    const h = histRef.current;
+    const last = h[h.length - 1];
+    if (!last || last.t !== state.tick) {
+      // build a NEW array (recharts freezes the data prop, so don't mutate it)
+      histRef.current = [...h, { t: state.tick, yes: mkt.pYes * 100 }].slice(-600);
+      force((x) => x + 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.tick, mkt?.id]);
+
+  if (!mkt) {
+    return <div className="panel" style={{ padding: 40, textAlign: 'center' }}>Waiting for the 5-minute market…</div>;
+  }
+
+  const yesPct = mkt.pYes * 100;
+  const noPct = 100 - yesPct;
+  const yesCost = size * mkt.ask; // pay the ask to buy YES
+  const noCost = size * (1 - mkt.bid); // NO ask = 1 - YES bid
+
+  const buy = (side: Side) => {
+    sim.userTrade(mkt.id, side, size);
+    const price = side === 'YES' ? mkt.ask : 1 - mkt.bid;
+    setPos((p) => ({
+      marketId: mkt.id,
+      yes: p.yes + (side === 'YES' ? size : 0),
+      no: p.no + (side === 'NO' ? size : 0),
+      cost: p.cost + size * price,
+    }));
+    refresh();
+  };
+
+  // mark-to-model value of your position + unrealized P&L
+  const posValue = pos.yes * mkt.pYes + pos.no * (1 - mkt.pYes);
+  const unreal = posValue - pos.cost;
+
+  const yesBids = mkt.restingBids.filter((o) => o.side === 'YES').sort((a, b) => b.limitPrice - a.limitPrice).slice(0, 8);
+  const noBids = mkt.restingBids.filter((o) => o.side === 'NO').sort((a, b) => b.limitPrice - a.limitPrice).slice(0, 8);
+
+  return (
+    <div className="col">
+      {/* header */}
+      <div className="panel">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+          <div>
+            <h2 style={{ fontSize: 20 }}>Will BTC be ≥ ${fmt(mkt.strike, 0)} at resolution?</h2>
+            <div className="hint" style={{ marginTop: 4 }}>
+              5-minute rolling market · resolves in <b style={{ color: 'var(--text)' }}>{ticksToClock(mkt.tauTicks)}</b> · then a fresh market opens
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div className="hint">BTC spot (live)</div>
+            <div style={{ fontSize: 26, fontVariantNumeric: 'tabular-nums' }}>${fmt(state.btc, 1)}</div>
+            <div className={'hint ' + (state.btc >= mkt.strike ? 'pos' : 'neg')}>
+              {state.btc >= mkt.strike ? 'above' : 'below'} strike by ${fmt(Math.abs(state.btc - mkt.strike), 0)}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* YES/NO big prices */}
+      <div className="row">
+        <div className="panel" style={{ flex: 1, borderLeft: '3px solid var(--green)' }}>
+          <div className="hint">YES</div>
+          <div style={{ fontSize: 34, color: 'var(--green)', fontVariantNumeric: 'tabular-nums' }}>{fmt(yesPct, 1)}¢</div>
+          <div className="hint">ask {fmt(mkt.ask, 3)}</div>
+        </div>
+        <div className="panel" style={{ flex: 1, borderLeft: '3px solid var(--red)' }}>
+          <div className="hint">NO</div>
+          <div style={{ fontSize: 34, color: 'var(--red)', fontVariantNumeric: 'tabular-nums' }}>{fmt(noPct, 1)}¢</div>
+          <div className="hint">ask {fmt(1 - mkt.bid, 3)}</div>
+        </div>
+      </div>
+
+      <div className="row">
+        {/* probability chart */}
+        <div className="panel" style={{ flex: 2, minWidth: 420 }}>
+          <h3>YES probability <span className="hint">· this market, since it opened</span></h3>
+          <ResponsiveContainer width="100%" height={240}>
+            <AreaChart data={histRef.current} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="yesg" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--green)" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="var(--green)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <XAxis dataKey="t" tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b" />
+              <YAxis domain={[0, 100]} tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b" width={36} tickFormatter={(v) => v + '¢'} />
+              <Tooltip contentStyle={{ background: '#131722', border: '1px solid #232a3b', borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: '#8a93a6' }} formatter={(v) => [fmt(Number(v), 1) + '¢', 'YES']} />
+              <ReferenceLine y={50} stroke="#3a4357" strokeDasharray="3 3" />
+              <Area type="monotone" dataKey="yes" stroke="var(--green)" fill="url(#yesg)" strokeWidth={1.8} isAnimationActive={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* trade panel */}
+        <div className="panel" style={{ flex: 1, minWidth: 280 }}>
+          <h3>Trade <span className="hint">· vs the engine</span></h3>
+          <div className="field">
+            <label><span>size (shares)</span><b>{size}</b></label>
+            <input type="range" min={1} max={200} step={1} value={size} onChange={(e) => setSize(parseInt(e.target.value))} />
+          </div>
+          <div className="row" style={{ gap: 8 }}>
+            <button className="btn primary" style={{ flex: 1, background: 'var(--green)', borderColor: 'var(--green)' }} onClick={() => buy('YES')}>
+              Buy YES · {usd2(yesCost)}
+            </button>
+            <button className="btn primary" style={{ flex: 1, background: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => buy('NO')}>
+              Buy NO · {usd2(noCost)}
+            </button>
+          </div>
+          <div style={{ marginTop: 14 }}>
+            <div className="kv"><span>your YES</span><span>{fmt(pos.yes, 0)} sh</span></div>
+            <div className="kv"><span>your NO</span><span>{fmt(pos.no, 0)} sh</span></div>
+            <div className="kv"><span>cost</span><span>{usd2(pos.cost)}</span></div>
+            <div className="kv"><span>unrealized</span><span className={cls(unreal)}>{usd2(unreal)}</span></div>
+            <div className="kv"><span>realized (all rolls)</span><span className={cls(realized)}>{usd2(realized)}</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div className="row">
+        {/* order book */}
+        <div className="panel" style={{ flex: 1, minWidth: 300 }}>
+          <h3>Order book <span className="hint">· resting bids · engine mid {fmt(mkt.pYes, 3)}</span></h3>
+          <div className="row" style={{ gap: 16 }}>
+            <table style={{ flex: 1 }}>
+              <thead><tr><th>YES bid</th><th>size</th></tr></thead>
+              <tbody>
+                {yesBids.length === 0 && <tr><td colSpan={2} className="mut">—</td></tr>}
+                {yesBids.map((o, i) => <tr key={i}><td className="pos">{fmt(o.limitPrice, 3)}</td><td>{fmt(o.shares, 1)}</td></tr>)}
+              </tbody>
+            </table>
+            <table style={{ flex: 1 }}>
+              <thead><tr><th>NO bid</th><th>size</th></tr></thead>
+              <tbody>
+                {noBids.length === 0 && <tr><td colSpan={2} className="mut">—</td></tr>}
+                {noBids.map((o, i) => <tr key={i}><td className="neg">{fmt(o.limitPrice, 3)}</td><td>{fmt(o.shares, 1)}</td></tr>)}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* recent trades */}
+        <div className="panel" style={{ flex: 1, minWidth: 300 }}>
+          <h3>Recent trades</h3>
+          <div className="tape">
+            {mkt.lastTrades.length === 0 && <div className="mut">no trades yet</div>}
+            {mkt.lastTrades.slice(0, 14).map((t, i) => (
+              <div className="line" key={i}>
+                <span className={t.side === 'YES' ? 'pos' : 'neg'}>{t.side} {fmt(t.shares, 1)} @ {fmt(t.price, 3)}</span>
+                <span className="mut">{t.channel === 'engine' ? '⚙' : '⇄'} {t.actor}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
