@@ -153,7 +153,7 @@ export function Page1Trading({
           <div className="strip">
             {tenors.map((t) => (
               <div className="cell" key={t.label}>
-                <div className="lbl">{t.label} · {t.count} strikes</div>
+                <div className="lbl">{t.label} · {t.count} strike{t.count === 1 ? '' : 's'}</div>
                 <div className="val">{ticksToClock(t.nextClose)}</div>
                 <div className="hint">next roll</div>
               </div>

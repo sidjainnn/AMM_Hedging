@@ -38,7 +38,7 @@ export default function App() {
             <button className="btn" onClick={() => { sim.step(); sync(); }}>Step</button>
           )}
           <div className="seg">
-            {[1, 2, 5, 10].map((s) => (
+            {[1, 2, 5, 10, 30].map((s) => (
               <button key={s} className={speed === s ? 'on' : ''} onClick={() => setSpeed(s)}>
                 {s}×
               </button>

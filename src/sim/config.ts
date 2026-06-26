@@ -25,12 +25,12 @@ export const defaultConfig: SimConfig = {
   btcDriftPerTick: 0.000002,
   jumpChance: 0.01,
   jumpSize: 0.01,
-  strikePcts: [-0.03, -0.02, -0.01, 0.01, 0.02, 0.03],
+  // one ATM market per tenor (strike = spot at creation, refreshed each roll)
+  strikePcts: [0],
   tenors: [
     { label: '5m', ticks: 300 },
     { label: '10m', ticks: 600 },
     { label: '30m', ticks: 1800 },
-    { label: '1h', ticks: 3600 },
   ],
   // 'behavioral' = heterogeneous trader population; 'simple' = original v1
   // agents (rollback). Switchable live from the Trading page.
