@@ -10,6 +10,9 @@ the binary markets and the hedge book are simulated/paper.
 This file is loaded every session: keep it lean. Detailed specs live in `docs/` and should be
 read on demand (see pointers below).
 
+> **Resuming work? Read `docs/STATUS.md` first** — current state, how to run, and the
+> prioritized next steps. `docs/agents-implementation.md` holds the deferred agent-reward design.
+
 ## Stack
 - **TypeScript** end to end (shared types from engine → UI).
 - **React** frontend (live-updating dashboard + charts).
