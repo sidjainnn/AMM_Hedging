@@ -40,6 +40,24 @@ const WEIGHTS: Record<Archetype, number> = {
   informed: 0.15,
 };
 
+// Baseline order-arrival rate: expected trades per tick across ALL markets in a
+// calm market. Real prediction markets are sporadic, so this is well below 1 —
+// most calm ticks have NO trade. Volatility & near-expiry multiply it.
+const BASE_RATE = 0.3;
+
+// Knuth's Poisson sampler (seeded via the provided RNG → deterministic).
+function poisson(rng: RNG, lambda: number): number {
+  if (lambda <= 0) return 0;
+  const L = Math.exp(-lambda);
+  let k = 0;
+  let p = 1;
+  do {
+    k++;
+    p *= rng.next();
+  } while (p > L);
+  return k - 1;
+}
+
 export class BehavioralAgents implements AgentEngine {
   private pop: Trader[];
 
@@ -76,8 +94,17 @@ export class BehavioralAgents implements AgentEngine {
     if (markets.length === 0) return;
     const rng = this.base.derive(`behavioral-${ctx.tick}`);
 
-    // bursty arrivals: activity rises with recent volatility
-    const burst = 1 + Math.min(3, Math.abs(ctx.recentDrift) * 120);
+    // Sporadic, bursty order flow (Poisson arrivals) — NOT one trade per tick.
+    // Rate spikes with recent volatility and as the nearest market approaches
+    // expiry; in calm periods most ticks see no trade at all.
+    const vol = Math.abs(ctx.recentDrift);
+    let minTau = Infinity;
+    for (const m of markets) {
+      const t = m.tau(ctx.tick);
+      if (t > 0) minTau = Math.min(minTau, t);
+    }
+    const expiryBoost = isFinite(minTau) ? 1 + Math.max(0, (60 - minTau) / 30) : 1; // last ~minute ramp
+    const burst = (1 + Math.min(8, vol * 250)) * expiryBoost;
 
     const archIntensity: Record<Archetype, number> = {
       noise: ctx.noiseIntensity,
@@ -86,13 +113,34 @@ export class BehavioralAgents implements AgentEngine {
       informed: ctx.arbIntensity,
     };
 
-    for (const t of this.pop) {
-      const pAct = clamp(t.activity * burst * archIntensity[t.archetype] * 0.95, 0, 0.97);
-      if (!rng.chance(pAct)) continue;
-      this.act(t, ctx, rng);
+    const intensityScale =
+      ctx.noiseIntensity * 0.5 + ctx.directionalIntensity * 0.3 + ctx.arbIntensity * 0.2;
+    const lambda = BASE_RATE * burst * intensityScale;
+    const arrivals = poisson(rng, lambda);
+
+    if (arrivals > 0) {
+      // each arrival = one trader acts, chosen ∝ activity × archetype intensity
+      const weights = this.pop.map((t) => t.activity * archIntensity[t.archetype]);
+      const total = weights.reduce((a, b) => a + b, 0);
+      if (total > 0) {
+        for (let i = 0; i < arrivals; i++) {
+          const t = this.pickTrader(rng, weights, total);
+          if (t) this.act(t, ctx, rng);
+        }
+      }
     }
 
     for (const m of markets) m.matchPairs(ctx.tick);
+  }
+
+  // weighted random trader selection (roulette wheel)
+  private pickTrader(rng: RNG, weights: number[], total: number): Trader | null {
+    let r = rng.next() * total;
+    for (let i = 0; i < this.pop.length; i++) {
+      r -= weights[i];
+      if (r <= 0) return this.pop[i];
+    }
+    return this.pop[this.pop.length - 1] ?? null;
   }
 
   private act(t: Trader, ctx: AgentContext, rng: RNG): void {
