@@ -9,7 +9,8 @@
 >   true over-round is a possible refinement.
 
 Three deterministic engines, toggle between them per market. All are **binary** (YES + NO = 100,
-init 50/50) and **feed-free**: price is a function of inventory only. Only trades against the
+init 50/50) and **inventory-priced** (not anchored to the Binance feed): price is a function
+of inventory only. Only trades against the
 engine change inventory and therefore price (golden rule #2).
 
 State convention: `qY`, `qN` = outstanding shares the engine has sold to traders (its inventory).

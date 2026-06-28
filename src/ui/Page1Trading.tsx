@@ -56,7 +56,7 @@ export function Page1Trading({
             }}
           />
           <p className="hint" style={{ marginTop: 8 }}>
-            Feed-free: price = f(inventory q) only. Switching resets inventory.
+            AMM: price = f(inventory q) only (not anchored to the Binance feed). Switching resets inventory.
           </p>
         </div>
 

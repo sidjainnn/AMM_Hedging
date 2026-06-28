@@ -18,7 +18,7 @@ export interface QuoteParams {
   mode: QuotingMode;
   manualHalfSpread: number; // s/2 in probability units
   gamma: number; // Stoikov risk aversion
-  sigma: number; // Stoikov vol input (user slider, feed-free)
+  sigma: number; // Stoikov vol input (user slider)
   k: number; // Stoikov order-arrival depth
 }
 

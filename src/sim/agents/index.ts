@@ -1,8 +1,8 @@
 // Agent layer with a swappable model so we can roll back to the original simple
 // agents at any time (CLAUDE.md: "agents meant to be retuned after the system
-// is observable"). Both models are feed-free in the pricing sense: they may
-// reference the synthetic spot + ESTIMATED sigma (sim ground truth / deployment-
-// available per golden rule #6) but never feed an external data source.
+// is observable"). Both models reference the observable spot (live Binance) +
+// ESTIMATED sigma; the AMM engine still prices off inventory, not the feed
+// (golden rule #6: deployment logic uses est-σ / own-flow only).
 
 import { RNG } from '../rng';
 import type { Market } from '../market';

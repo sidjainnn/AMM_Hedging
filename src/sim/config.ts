@@ -11,7 +11,7 @@ export const defaultConfig: SimConfig = {
   // Headless tools (backtest/validate) override this back to false.
   externalPrice: true,
   // b0=110: the LMSR loss bound is b·ln2 per resolved market (~76 here) — the
-  // liquidity *subsidy* the house pays for feed-free price discovery. The vig
+  // liquidity *subsidy* the house pays for inventory-based price discovery. The vig
   // (spread) must out-earn it to break even, so b is kept moderate.
   engine: { kind: 'LMSR', b0: 110, alpha: 0.05, cpmmK: 110 },
   quote: {
@@ -41,7 +41,7 @@ export const defaultConfig: SimConfig = {
   // Noise is symmetric churn → pays spread without net price displacement, so
   // it earns vig "for free". Directional/arb cause displacement = subsidy +
   // adverse selection (the cost). A healthy noise:toxic ratio is what makes a
-  // feed-free maker viable, so noise dominates the default mix.
+  // AMM maker viable, so noise dominates the default mix.
   noiseIntensity: 2.5,
   directionalIntensity: 0.7,
   arbIntensity: 0.7,

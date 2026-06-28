@@ -1,5 +1,7 @@
-// Pricing engines (docs/engines.md). All feed-free: price is a function of
-// inventory q only (golden rule #1). Trades vs the engine are BUYS of YES or
+// Pricing engines (docs/engines.md). Inventory-priced AMM: price is a function
+// of inventory q only — NOT anchored to the Binance feed (golden rule #1; the
+// feed is the underlying source of truth, not a quote input). Trades vs the
+// engine are BUYS of YES or
 // NO shares — a user "selling YES" is modelled as buying NO (binary AMM
 // convention). This keeps one uniform interface across all three engines.
 //

@@ -14,7 +14,7 @@ against the synthetic BTC price** — no real venues, no money (golden rule #4).
 are *modeled*.
 
 ## Numerical settlement-value delta (engine-agnostic)
-Do NOT bump the engine price to get delta — it is feed-free, so it wouldn't move and delta would
+Do NOT bump the engine price to get delta — it prices off inventory, so it wouldn't move and delta would
 be zero. Instead bump the **expected settlement value of the house's net inventory**:
 1. Take the house's net YES/NO inventory for a market.
 2. Compute its expected settlement value at the current synthetic price `S`, given `σ` and `τ`

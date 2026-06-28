@@ -1,7 +1,7 @@
 // Behavioral agents — a persistent, heterogeneous population calibrated to
-// documented prediction-market / retail-trading stylized facts. Still fully
-// feed-free: informed traders reference the observable spot + ESTIMATED sigma
-// only (deployment-available); nothing reads an external data feed.
+// documented prediction-market / retail-trading stylized facts. Informed traders
+// reference the observable spot (live Binance) + ESTIMATED sigma only
+// (deployment-available); the AMM engine still prices off inventory, not the feed.
 //
 // Replicated regularities:
 //   - persistent population reused across markets (repeat behaviour)

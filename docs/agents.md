@@ -13,7 +13,8 @@
 > - Advanced reward + a precision-weighted sentiment estimator are deferred in
 >   `docs/agents-implementation.md`.
 
-Since pricing is feed-free and there are no real users, **agents are the market** — they generate
+Since the binary price comes from the AMM (inventory) and there are no real users, **agents are the
+market** — they generate
 all the flow, volume, and skew the dashboards visualize. Agent behavior is intentionally simple
 for v1 and meant to be **retuned after the system is built and observable** (do not over-engineer
 agents up front).

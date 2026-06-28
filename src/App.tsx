@@ -18,7 +18,7 @@ export default function App() {
       <div className="topbar">
         <div className="brand">
           <h1>Crypto Binary Prediction Market — Research Simulator</h1>
-          <span className="sub">feed-free pricing · LMSR / CPMM / LS-LMSR · real-time hedging · all simulated, no real money</span>
+          <span className="sub">live Binance feed · LMSR / CPMM / LS-LMSR inventory-priced AMM · real-time perp hedging · demo / paper</span>
         </div>
 
         <div className="tabs">

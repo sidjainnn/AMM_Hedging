@@ -2,7 +2,8 @@
 
 Runs the simulation core **server-side**, driven by the live **Binance demo**
 price feed, and reconciles the hedge as a real position on the **demo futures
-venue**. Pricing stays feed-free (the engine prices off inventory `q`; the live
+venue**. The Binance feed is the source of truth for the underlying; the AMM
+engine still prices the binary off inventory `q` (not feed-anchored; the live
 price only marks P&L, settles markets, and informs agents). No real money —
 demo/paper venues only, enforced in code.
 

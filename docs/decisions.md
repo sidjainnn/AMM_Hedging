@@ -4,8 +4,9 @@
 > - **A backend now exists** (`server/`, Node/Express) — the "client-side, no
 >   backend" decision was superseded when live data was added (CLAUDE.md
 >   anticipated this: "extract a server later if real data is added").
-> - **Underlying = live Binance demo feed** (not synthetic). Pricing stays
->   feed-free (engine = f(q)); the feed is the underlying, not a pricing anchor.
+> - **Underlying = live Binance demo feed** (single source of truth; not
+>   synthetic — "feed-free" branding retired). The AMM engine still prices the
+>   *binary* off inventory (f(q)); the feed is the underlying, not a quote anchor.
 > - **Demo venue, real paper orders** — golden rule #4 relaxed from "no venues"
 >   to "demo/paper only" (mainnet hard-blocked).
 > - Tenors **5m/10m/30m** (1h dropped); one ATM strike per tenor.
@@ -19,7 +20,10 @@ decision is being questioned or extended, so settled questions are not re-litiga
 
 ## Locked decisions + rationale
 
-- **Feed-free pricing.** Decision: the pricing engine uses no external spot price as an anchor.
+- **Inventory-priced engine (originally branded "feed-free").** Decision: the engine prices the
+  binary off inventory, with no external spot price as a *quote* anchor. NOTE (superseded framing):
+  the project is no longer "feed-free" overall — the live Binance feed is now the underlying source
+  of truth (marking/settlement/agents); only the engine's binary quote remains un-anchored to it.
   Rationale: a deliberate constraint for this phase. Oracle-anchoring (snapping the price to an
   N(d2) fair value from external spot) was researched and is powerful, but is explicitly OUT for
   pricing now. N(d2)-style logic survives only inside the hedge's settlement-value estimate, and

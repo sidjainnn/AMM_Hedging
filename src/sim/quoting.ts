@@ -1,4 +1,4 @@
-// Quoting overlay (docs/quoting.md). Turns the engine's feed-free mid into a
+// Quoting overlay (docs/quoting.md). Turns the engine's inventory-based mid into a
 // displayed bid/ask. NEVER mutates inventory q (golden rule #5) — it only
 // changes the prices shown/executable. This is the primary internal inventory
 // manager; perp hedging is the secondary layer.

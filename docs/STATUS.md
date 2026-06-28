@@ -9,9 +9,11 @@ then say "read docs/STATUS.md and docs/agents-implementation.md".
 ---
 
 ## What this project is
-A research simulator for crypto **binary prediction markets**: feed-free AMM
-pricing (LMSR / CPMM / LS-LMSR) + a quoting overlay + simulated agents + a
-real-time **perp hedging** layer, now wired to the **live Binance demo** venue.
+A research simulator for crypto **binary prediction markets**: inventory-priced
+AMM engines (LMSR / CPMM / LS-LMSR) + a quoting overlay + simulated agents + a
+real-time **perp hedging** layer, wired to the **live Binance demo** venue. The
+**live Binance feed is the single source of truth** for the BTC underlying;
+synthetic-feed testing is retired (GBM survives only as a backtest fixture).
 Central thesis under test: *can hedging the AMM's inventory skew on perps
 (informed by prediction-market sentiment) neutralize the directional inventory
 risk that an AMM has and a CLOB doesn't?*
@@ -25,7 +27,7 @@ risk that an AMM has and a CLOB doesn't?*
 ## Architecture
 ```
 src/sim/        deterministic sim core (pure TS, reused by web + server)
-  engines/      LMSR · CPMM · LS-LMSR (price = f(inventory q), feed-free)
+  engines/      LMSR · CPMM · LS-LMSR (price = f(inventory q), not feed-anchored)
   quoting.ts    manual + Avellaneda–Stoikov overlay
   market.ts     rolling tenors, ATM strike, order book, pair-mint/engine
   price.ts      synthetic GBM OR external live price (externalPrice flag)
@@ -78,8 +80,11 @@ Keys ONLY in `server/.env` (gitignored). Demo futures wallet ~5k USDT (faucet).
 `DRY_RUN=false` + Enable on Live tab = real demo orders.
 
 ## Locked decisions / honesty
-- Feed-free **pricing** kept (engine = f(q)); Binance feed is the **underlying**,
-  not a pricing input. Only Book C is deployable (A/B use true σ you lack live).
+- **Binance feed = single source of truth** for the BTC underlying. The AMM
+  engine still prices the *binary* off inventory (f(q)), NOT anchored to the feed
+  — needed for the inventory-hedging thesis. ("feed-free" branding is retired;
+  it was a label for the engine mechanism, not the project.) Only Book C is
+  deployable (A/B use true σ you lack live).
 - Break-even: spread/vig must out-earn the LMSR subsidy (`b·ln2`/market) +
   adverse selection. Default tuned (b110, Stoikov k25) is profitable in sim.
 - Demo/paper only; production hosts blocked in `server/src/config.ts`.

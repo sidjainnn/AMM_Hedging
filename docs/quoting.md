@@ -23,16 +23,17 @@ spread = γ * σ^2 * (T - t) + (2/γ) * ln(1 + γ/k)
 ```
 Quotes are placed around `r` using `spread`.
 
-Parameters are **user-set sliders, not from a feed** (feed-free constraint):
+Parameters are **user-set sliders, not derived from the feed**:
 - `σ` — volatility (the key knob; also reused by the deployment-mode hedge delta in `docs/hedging.md`)
 - `γ` — risk aversion
 - `T` — horizon (use time-to-expiry of the window for `(T - t)`)
 - `k` — order-arrival/depth parameter
 
 ## Role
-Stoikov is the **primary internal (feed-free) inventory manager**: when the house is long YES it
+Stoikov is the **primary internal inventory manager**: when the house is long YES it
 lowers the YES quote / raises NO, paying users to trade it back toward flat. At this horizon,
 **pricing is the first-line risk tool**; the external perp hedge (`docs/hedging.md`) is the
 backstop for residual aggregate exposure, not the front line.
 
-`P_engine` is always the engine's own price (feed-free) — there is no external mid to use.
+`P_engine` is always the engine's own inventory-based price — the quoting layer never uses the
+Binance feed as a mid (the feed is the underlying, not the binary quote).

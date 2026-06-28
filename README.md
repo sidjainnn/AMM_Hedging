@@ -1,10 +1,12 @@
 # Crypto Binary Prediction Market — Research Simulator
 
 A TypeScript + React simulation of crypto binary prediction markets. It compares
-three feed-free pricing engines (LMSR / CPMM / LS-LMSR) under a Stoikov /
+three **inventory-priced AMM** engines (LMSR / CPMM / LS-LMSR) under a Stoikov /
 manual-spread quoting overlay, runs simulated agents that create realistic order
-flow and skew, and tests a real-time perp hedging layer — now wired to the
-**live Binance demo** venue. The BTC underlying is the live Binance price; the
+flow and skew, and tests a real-time perp hedging layer — wired to the
+**live Binance demo** venue. The **live Binance feed is the single source of
+truth** for the BTC underlying (marking, settlement, agents); the AMM engine
+still discovers the *binary* price from inventory/flow, not from the feed. The BTC underlying is the live Binance price; the
 binary markets + hedge book are simulated/paper. No real money (demo only).
 
 A small **Node/Express backend** (`server/`) runs the sim off the live feed and
@@ -68,8 +70,9 @@ server/                  Node/Express backend: live Binance demo feed + sim +
 
 ## Golden rules enforced
 
-1. **Feed-free pricing** — engine price is a function of inventory `q` only; the
-   BTC underlying (now the **live Binance feed**) is never a pricing input.
+1. **Inventory-priced AMM** — the binary engine price is a function of inventory
+   `q` only; the **live Binance feed is the source of truth** for the BTC
+   underlying (marking/settlement/agents) but is never a *quote* input.
 2. **Only engine trades move price** — order placement alone does not.
 3. **User↔user trades are price-neutral** — pair-minting; only user↔engine flow
    (incl. arbitrage) moves `q`.
