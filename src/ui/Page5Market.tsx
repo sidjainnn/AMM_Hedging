@@ -18,6 +18,7 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
   const [size, setSize] = useState(10);
   const [pos, setPos] = useState<UserPos>({ marketId: '', yes: 0, no: 0, cost: 0 });
   const [realized, setRealized] = useState(0);
+  const [wallet, setWallet] = useState(1000); // finite cash; resolves credit back on settlement
   const [showControls, setShowControls] = useState(true);
 
   // per-market probability history (resets each roll)
@@ -32,7 +33,8 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
     if (prev && prev.id !== mkt.id) {
       if (pos.marketId === prev.id && (pos.yes > 0 || pos.no > 0)) {
         const outcomeYes = state.btc > prev.strike;
-        const payout = outcomeYes ? pos.yes : pos.no;
+        const payout = outcomeYes ? pos.yes : pos.no; // $1 per winning share
+        setWallet((w) => w + payout); // settlement credits cash back
         setRealized((r) => r + (payout - pos.cost));
       }
       setPos({ marketId: mkt.id, yes: 0, no: 0, cost: 0 });
@@ -62,13 +64,18 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
   const noCost = size * (1 - mkt.bid); // NO ask = 1 - YES bid
 
   const buy = (side: Side) => {
-    sim.userTrade(mkt.id, side, size);
     const price = side === 'YES' ? mkt.ask : 1 - mkt.bid;
+    // finite wallet: buy at most what the cash on hand allows
+    const qty = Math.min(size, Math.floor((wallet / price) * 100) / 100);
+    if (qty < 0.01) return; // can't afford
+    const cost = qty * price;
+    sim.userTrade(mkt.id, side, qty);
+    setWallet((w) => w - cost);
     setPos((p) => ({
       marketId: mkt.id,
-      yes: p.yes + (side === 'YES' ? size : 0),
-      no: p.no + (side === 'NO' ? size : 0),
-      cost: p.cost + size * price,
+      yes: p.yes + (side === 'YES' ? qty : 0),
+      no: p.no + (side === 'NO' ? qty : 0),
+      cost: p.cost + cost,
     }));
     refresh();
   };
@@ -76,6 +83,7 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
   // mark-to-model value of your position + unrealized P&L
   const posValue = pos.yes * mkt.pYes + pos.no * (1 - mkt.pYes);
   const unreal = posValue - pos.cost;
+  const equity = wallet + posValue; // total account value (cash + open position)
 
   const yesBids = mkt.restingBids.filter((o) => o.side === 'YES').sort((a, b) => b.limitPrice - a.limitPrice).slice(0, 8);
   const noBids = mkt.restingBids.filter((o) => o.side === 'NO').sort((a, b) => b.limitPrice - a.limitPrice).slice(0, 8);
@@ -208,17 +216,22 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
             <input type="range" min={1} max={200} step={1} value={size} onChange={(e) => setSize(parseInt(e.target.value))} />
           </div>
           <div className="row" style={{ gap: 8 }}>
-            <button className="btn primary" style={{ flex: 1, background: 'var(--green)', borderColor: 'var(--green)' }} onClick={() => buy('YES')}>
+            <button className="btn primary" disabled={wallet < yesCost && wallet < mkt.ask}
+              style={{ flex: 1, background: 'var(--green)', borderColor: 'var(--green)', opacity: wallet < mkt.ask ? 0.4 : 1 }} onClick={() => buy('YES')}>
               Buy YES · {usd2(yesCost)}
             </button>
-            <button className="btn primary" style={{ flex: 1, background: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => buy('NO')}>
+            <button className="btn primary" disabled={wallet < noCost && wallet < (1 - mkt.bid)}
+              style={{ flex: 1, background: 'var(--red)', borderColor: 'var(--red)', opacity: wallet < (1 - mkt.bid) ? 0.4 : 1 }} onClick={() => buy('NO')}>
               Buy NO · {usd2(noCost)}
             </button>
           </div>
           <div style={{ marginTop: 14 }}>
-            <div className="kv"><span>your YES</span><span>{fmt(pos.yes, 0)} sh</span></div>
-            <div className="kv"><span>your NO</span><span>{fmt(pos.no, 0)} sh</span></div>
-            <div className="kv"><span>cost</span><span>{usd2(pos.cost)}</span></div>
+            <div className="kv"><span>💰 wallet (cash)</span><span style={{ color: 'var(--text)', fontWeight: 600 }}>{usd2(wallet)}</span></div>
+            <div className="kv"><span>position value</span><span>{usd2(posValue)}</span></div>
+            <div className="kv"><span>equity (cash + pos)</span><span style={{ color: 'var(--accent)', fontWeight: 600 }}>{usd2(equity)}</span></div>
+            <div className="kv" style={{ borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 6 }}><span>your YES</span><span>{fmt(pos.yes, 1)} sh</span></div>
+            <div className="kv"><span>your NO</span><span>{fmt(pos.no, 1)} sh</span></div>
+            <div className="kv"><span>cost basis</span><span>{usd2(pos.cost)}</span></div>
             <div className="kv"><span>unrealized</span><span className={cls(unreal)}>{usd2(unreal)}</span></div>
             <div className="kv"><span>realized (all rolls)</span><span className={cls(realized)}>{usd2(realized)}</span></div>
           </div>
