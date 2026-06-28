@@ -274,6 +274,20 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
           </div>
         </div>
       </div>
+
+      {/* agent population wealth — the reward signal */}
+      {state.agentStats && (
+        <div className="panel">
+          <h3>Agent population <span className="hint">· wallets are their reward: winners trade more, broke agents drop out</span></h3>
+          <div className="strip">
+            <div className="cell"><div className="lbl">active traders</div><div className="val">{state.agentStats.active}/{state.agentStats.count}</div><div className="hint">balance ≥ min</div></div>
+            <div className="cell"><div className="lbl">bankrupt</div><div className="val neg">{state.agentStats.bankrupt}</div><div className="hint">dropped out</div></div>
+            <div className="cell"><div className="lbl">in profit</div><div className="val pos">{state.agentStats.winners}</div><div className="hint">above starting bankroll</div></div>
+            <div className="cell"><div className="lbl">avg balance</div><div className="val">{usd2(state.agentStats.avgBalance)}</div><div className="hint">per trader</div></div>
+            <div className="cell"><div className="lbl">total capital</div><div className="val">{usd2(state.agentStats.totalBalance)}</div><div className="hint">richest {usd2(state.agentStats.richest)}</div></div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

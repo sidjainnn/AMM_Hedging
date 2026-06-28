@@ -30,7 +30,24 @@ interface Trader {
   patience: number; // 0..1, higher = more likely to post a limit
   longshot: number; // 0..1, favorite-longshot bias strength
   riskAversion: number; // scales size down
+  // --- wallet / reward state ---
+  balance: number; // finite cash; the reward signal
+  startBalance: number;
+  positions: Record<string, { yes: number; no: number; cost: number }>; // by marketId
 }
+
+// Below this cash an agent is broke and drops out of the flow (the penalty).
+const MIN_BALANCE = 15;
+
+// Each trade risks a fraction of the agent's bankroll (bankroll management) —
+// this is what makes the wallet the behavioural driver: balances compound up for
+// winners and bleed to zero for losers.
+const ARCH_RISK: Record<Archetype, number> = {
+  noise: 0.03,
+  momentum: 0.05,
+  contrarian: 0.045,
+  informed: 0.06,
+};
 
 const POP = 95;
 const WEIGHTS: Record<Archetype, number> = {
@@ -79,6 +96,7 @@ export class BehavioralAgents implements AgentEngine {
       }
     }
     const lognormal = (mu: number, sigma: number) => Math.exp(r.normal(mu, sigma));
+    const startBalance = clamp(lognormal(Math.log(150), 0.75), 30, 2000); // heterogeneous bankroll
     return {
       archetype,
       activity: clamp(lognormal(Math.log(0.12), 0.7), 0.01, 0.8),
@@ -86,6 +104,9 @@ export class BehavioralAgents implements AgentEngine {
       patience: r.uniform(0, 1),
       longshot: r.uniform(0, 0.6),
       riskAversion: r.uniform(0.6, 1.4),
+      balance: startBalance,
+      startBalance,
+      positions: {},
     };
   }
 
@@ -120,7 +141,13 @@ export class BehavioralAgents implements AgentEngine {
 
     if (arrivals > 0) {
       // each arrival = one trader acts, chosen ∝ activity × archetype intensity
-      const weights = this.pop.map((t) => t.activity * archIntensity[t.archetype]);
+      // × wealth. Broke agents (balance<MIN) get weight 0 — they drop out of the
+      // flow. Winners (balance>start) get picked more often: the reward signal.
+      const weights = this.pop.map((t) => {
+        if (t.balance < MIN_BALANCE) return 0;
+        const wealthFactor = clamp(t.balance / t.startBalance, 0.2, 3);
+        return t.activity * archIntensity[t.archetype] * wealthFactor;
+      });
       const total = weights.reduce((a, b) => a + b, 0);
       if (total > 0) {
         for (let i = 0; i < arrivals; i++) {
@@ -152,7 +179,8 @@ export class BehavioralAgents implements AgentEngine {
 
     let side: Side;
     let marketable: boolean;
-    let size = t.sizeScale * rng.uniform(0.5, 1.8) / t.riskAversion;
+    // base bet sized as a fraction of the bankroll (~$0.5/share avg) → wealth-coupled
+    let size = (t.balance * ARCH_RISK[t.archetype] * rng.uniform(0.5, 1.6)) / (0.5 * t.riskAversion);
 
     switch (t.archetype) {
       case 'informed': {
@@ -163,10 +191,10 @@ export class BehavioralAgents implements AgentEngine {
         const friction = 0.004;
         if (edgeYes > friction && edgeYes >= edgeNo) {
           side = 'YES';
-          size = edgeYes * m.engine.effectiveB() * 0.45 * ctx.arbIntensity;
+          size *= clamp(edgeYes / 0.02, 0.5, 3); // bet bigger on bigger edge
         } else if (edgeNo > friction) {
           side = 'NO';
-          size = edgeNo * m.engine.effectiveB() * 0.45 * ctx.arbIntensity;
+          size *= clamp(edgeNo / 0.02, 0.5, 3);
         } else {
           return; // no edge -> no trade
         }
@@ -194,14 +222,27 @@ export class BehavioralAgents implements AgentEngine {
       }
     }
 
-    size = clamp(size, 0.4, 90);
+    size = clamp(size, 0.4, 200); // affordability is re-checked below for buys
     if (size < 0.4) return;
 
     if (marketable) {
+      const price = side === 'YES' ? m.quote.ask : 1 - m.quote.bid;
+      // finite wallet: cap to affordable cash, deduct, and record the position
+      const affordable = Math.floor((t.balance / Math.max(price, 1e-4)) * 100) / 100;
+      size = Math.min(size, affordable);
+      if (size < 0.4) return; // can't afford to act
+      const cost = size * price;
       m.executeEngineBuy(side, size, t.archetype, ctx.tick);
+      t.balance -= cost;
+      const pos = t.positions[m.id] ?? { yes: 0, no: 0, cost: 0 };
+      if (side === 'YES') pos.yes += size;
+      else pos.no += size;
+      pos.cost += cost;
+      t.positions[m.id] = pos;
     } else {
       // resting limit just inside the displayed quote; longshot bias makes the
       // trader willing to pay up (post more aggressively) on cheap outcomes.
+      // (liquidity-provision; not wallet-tracked for settlement in v1)
       const aggro = rng.uniform(0, 0.04) + t.longshot * rng.uniform(0, 0.05);
       const lim =
         side === 'YES'
@@ -240,5 +281,46 @@ export class BehavioralAgents implements AgentEngine {
       return exA >= exB ? a : b;
     }
     return rng.pick(ms);
+  }
+
+  // Settlement: pay out each agent's positions in the settled markets ($1 per
+  // winning share), credit their wallet, and clear the position. This is the
+  // reward — good traders' balances grow, bad ones bleed toward broke.
+  onSettled(markets: Market[], spot: number): void {
+    for (const m of markets) {
+      const outcomeYes = spot > m.strike;
+      for (const t of this.pop) {
+        const pos = t.positions[m.id];
+        if (!pos) continue;
+        const payout = outcomeYes ? pos.yes : pos.no; // $1 per winning share
+        t.balance += payout;
+        delete t.positions[m.id];
+      }
+    }
+  }
+
+  // Population wealth summary (the reward signal made visible).
+  stats() {
+    let total = 0;
+    let active = 0;
+    let bankrupt = 0;
+    let richest = 0;
+    let winners = 0; // balance above their start
+    for (const t of this.pop) {
+      total += t.balance;
+      if (t.balance >= MIN_BALANCE) active++;
+      else bankrupt++;
+      if (t.balance > t.startBalance) winners++;
+      richest = Math.max(richest, t.balance);
+    }
+    return {
+      count: this.pop.length,
+      active,
+      bankrupt,
+      winners,
+      totalBalance: total,
+      avgBalance: total / this.pop.length,
+      richest,
+    };
   }
 }

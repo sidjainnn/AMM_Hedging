@@ -139,4 +139,15 @@ export interface SimState {
   pnlSeries: PnlPoint[];
   hedgeLog: HedgeActivity[];
   tauStar: number; // current flatten threshold in ticks (approx)
+  agentStats?: AgentStats;
+}
+
+export interface AgentStats {
+  count: number;
+  active: number;
+  bankrupt: number;
+  winners: number;
+  totalBalance: number;
+  avgBalance: number;
+  richest: number;
 }

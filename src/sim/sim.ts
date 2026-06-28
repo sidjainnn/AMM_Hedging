@@ -118,7 +118,10 @@ export class Simulation {
 
     // 2. roll expired tenors, settle, accumulate realised P&L
     const settled = this.mm.roll(this.tick, spot);
-    if (settled.length) this.hedge.onSettled(settled);
+    if (settled.length) {
+      this.hedge.onSettled(settled);
+      this.agents.onSettled?.(settled, spot); // pay out agent wallets
+    }
 
     // 3. refresh quotes pre-flow
     for (const m of this.mm.markets) m.refreshQuote(this.tick, this.cfg.quote);
@@ -180,6 +183,7 @@ export class Simulation {
       pnlSeries: this.pnlSeries,
       hedgeLog: this.hedge.log,
       tauStar: this.tauStar,
+      agentStats: this.agents.stats?.(),
     };
   }
 
