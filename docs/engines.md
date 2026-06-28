@@ -1,5 +1,13 @@
 # Pricing Engines
 
+> **⚠️ Two impl notes (see code in `src/sim/engines/index.ts`):**
+> - **CPMM** price is implemented as the reserve ratio **`P(YES) = n/(y+n)`**
+>   (not `y/x` as written below), buying solved via a quadratic for the cash in.
+> - **LS-LMSR** in this build keeps prices summing to **1** (no over-round); its
+>   vig comes only from path-dependent cost charging `C(after;b_after) −
+>   C(before;b_before)` — i.e. the "prices sum > 1" vig below is approximate. A
+>   true over-round is a possible refinement.
+
 Three deterministic engines, toggle between them per market. All are **binary** (YES + NO = 100,
 init 50/50) and **feed-free**: price is a function of inventory only. Only trades against the
 engine change inventory and therefore price (golden rule #2).

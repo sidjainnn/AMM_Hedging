@@ -34,21 +34,28 @@ Then open the web app and go to the **Live (demo)** tab.
 ## What hedges, and how
 
 - The server runs the sim in real time (1 tick = 1 second), feeding it the live
-  `markPrice` each tick.
-- Each `HEDGE_INTERVAL_SEC`, it reads **Book C**'s delta target (the
-  deployment-realistic book — estimated σ, no ground-truth leak) and reconciles
-  the demo futures position toward it via a rounded MARKET order (respecting
-  `LOT_SIZE`/`MIN_NOTIONAL` from `exchangeInfo`).
+  spot price; the futures **mark** price is used for hedge execution.
+- Each `HEDGE_INTERVAL_SEC` it reconciles the demo futures position toward a
+  target set by **`HEDGE_MODE`** via a rounded MARKET order (respecting
+  `LOT_SIZE`/`MIN_NOTIONAL` from `exchangeInfo`):
+  - **`delta`** — neutralise **Book C**'s settlement-value delta (est-σ).
+  - **`sentiment`** (default) — hold a perp ∝ the smart-money lean
+    (`lean × SENTIMENT_GAIN × MAX_POSITION_BTC`).
+- It also polls the real **futures account** (`/fapi/v2/account`) for
+  balance/equity and tracks an equity curve.
 
 ## Endpoints
 
-- `GET /api/state` — full sim snapshot + `live` block (mark price, position, flags)
+- `GET /api/state` — full sim snapshot + `live` block (prices, account, position,
+  sentiment, equity series, flags)
+- `GET /api/price` — `{ price }` (the live spot, used by the browser sim)
 - `GET /api/health`
 - `POST /api/hedge/enable` `{ "enabled": true|false }`
+- `POST /api/hedge/mode` `{ "mode": "delta" | "sentiment" }`
 - `WS /ws` — pushes the same state each tick
 
 ## .env keys
 
 See `.env.example`. Defaults: spot `demo-api.binance.com`, futures
 `demo-fapi.binance.com`, `BTCUSDT`, `DRY_RUN=true`, `HEDGE_ENABLED=false`,
-`MAX_POSITION_BTC=0.05`.
+`MAX_POSITION_BTC=0.05`, `HEDGE_MODE=sentiment`, `SENTIMENT_GAIN=1`.

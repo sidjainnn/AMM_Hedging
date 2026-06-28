@@ -45,14 +45,20 @@ read on demand (see pointers below).
 Build each layer testable before the next sits on it.
 
 ## Where things are documented
+- **`docs/STATUS.md` — current state, how to run, next steps. READ FIRST when resuming.**
+- `docs/agents-implementation.md` — deferred advanced agent reward + sentiment estimator.
 - `docs/engines.md` — pricing engines (LMSR/CPMM/LS-LMSR), inventory, formulas.
-- `docs/markets.md` — rolling staggered tenors, order book, matching, pair-minting.
+- `docs/markets.md` — rolling tenors, order book, matching, pair-minting.
 - `docs/quoting.md` — Stoikov + manual-spread overlay.
-- `docs/agents.md` — agent set + synthetic BTC price process.
+- `docs/agents.md` — agent set + price process.
 - `docs/hedging.md` — settlement-value delta, T*(σ) flatten trigger, three hedge books, fees/funding.
-- `docs/dashboard.md` — the two pages and what each shows.
+- `docs/dashboard.md` — the dashboard pages and what each shows.
 - `docs/decisions.md` — *why* the locked decisions were made + parked/open items. Read when a
   design choice is being questioned or extended.
+
+The original `docs/*.md` are the design intent; each carries a "current build differs"
+note where the implementation deviated (live Binance underlying, 3 tenors, ATM strike,
+backend, demo venue, wallets, sentiment hedge). `docs/STATUS.md` is the source of truth.
 
 ## Scope discipline
 This is a research simulator, not production. The IAMM behavioral-intelligence layer was

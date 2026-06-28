@@ -1,5 +1,15 @@
 # Markets, Order Book & Matching
 
+> **⚠️ Current build differs from this spec (see `docs/STATUS.md`):**
+> - Tenors are **5m / 10m / 30m** (the 1h was dropped).
+> - **One ATM market per tenor** (no strike ladder); it settles **`BTC(t+τ) > K`**
+>   where `K` = spot at creation — not the "up over the window" (close ≥ open)
+>   comparator described below.
+> - The underlying is the **live Binance demo feed**, not the synthetic price.
+> - Order book: resting orders currently **only pair-mint**; the "swept when the
+>   engine price moves to them" behaviour is NOT implemented yet.
+> The rolling/pair-mint/engine-channel concepts below are still accurate.
+
 ## Rolling, staggered-tenor markets
 Markets do **not** terminate and stay dead — they **roll**: a window runs, closes for a short
 settlement gap (~10s), then a fresh window of the same tenor re-opens. The product is a *stream*

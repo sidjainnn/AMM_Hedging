@@ -1,5 +1,19 @@
 # Decisions & Rationale
 
+> **⚠️ Deviations in the current build (see `docs/STATUS.md`):**
+> - **A backend now exists** (`server/`, Node/Express) — the "client-side, no
+>   backend" decision was superseded when live data was added (CLAUDE.md
+>   anticipated this: "extract a server later if real data is added").
+> - **Underlying = live Binance demo feed** (not synthetic). Pricing stays
+>   feed-free (engine = f(q)); the feed is the underlying, not a pricing anchor.
+> - **Demo venue, real paper orders** — golden rule #4 relaxed from "no venues"
+>   to "demo/paper only" (mainnet hard-blocked).
+> - Tenors **5m/10m/30m** (1h dropped); one ATM strike per tenor.
+> - **Added since:** user + agent **wallets**, a **sentiment hedge mode** (perp ∝
+>   smart-money lean), and an information-sentiment signal — a partial,
+>   deliberate revisit of the dropped IAMM idea (`docs/agents-implementation.md`).
+> The rationale below is preserved as the original design intent.
+
 *Why* the locked choices were made, and what is deliberately parked. Read this when a design
 decision is being questioned or extended, so settled questions are not re-litigated.
 

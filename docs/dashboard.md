@@ -1,4 +1,12 @@
-# Dashboard (two pages)
+# Dashboard
+
+> **⚠️ Current build differs (see `docs/STATUS.md`):** the dashboard now has
+> **5 tabs**, not two: **5m Market** (Polymarket-style single market with a user
+> wallet + inline engine/quoting/agent controls + agent-population panel),
+> **Trading**, **Hedge Overview** (below), **Backtest** (3-engine P&L compare),
+> and **Live (demo)** (real Binance demo account balance/equity, smart-money
+> sentiment, delta/sentiment hedge toggle). Underlying is the live Binance feed.
+> Tenors are 5m/10m/30m. The two pages below still describe Trading + Hedge.
 
 Both pages are views onto the **same** running in-memory simulation (same engine + synthetic-price
 spine). Flip between them. Nothing touches real venues.

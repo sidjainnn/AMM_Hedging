@@ -1,5 +1,13 @@
 # Hedging Layer
 
+> **⚠️ Current build adds (see `docs/STATUS.md`):** the **live backend** marks
+> and executes against the **live Binance demo** feed and places **real demo
+> perp orders** (signed `POST /fapi/v1/order`, gated by `DRY_RUN` + Enable +
+> position cap) — not only in-memory notionals. A **sentiment hedge mode** was
+> added: hold a BTC perp ∝ the prediction-market smart-money lean, selectable vs
+> the delta hedge below. The settlement-value delta / three-book / flatten design
+> below is otherwise as implemented.
+
 Reacts in real time to the net skew agents create. Hedges the **aggregate** directional exposure
 of the rolling book, not individual markets. All positions are **in-memory notionals marked
 against the synthetic BTC price** — no real venues, no money (golden rule #4). Fees and funding
