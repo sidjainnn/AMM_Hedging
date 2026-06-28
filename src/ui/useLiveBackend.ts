@@ -22,10 +22,17 @@ export interface LiveInfo {
   hasKeys: boolean;
 
   hedgeEnabled: boolean;
+  hedgeMode: 'delta' | 'sentiment';
   livePosition: number;
   maxPositionBtc: number;
 
   hedgeError: string | null;
+
+  // real Binance demo futures account
+  account: { walletBalance: number; unrealizedPnl: number; equity: number; available: number } | null;
+  startEquity: number | null;
+  accountPnl: number;
+  equitySeries: { t: number; equity: number; btc: number }[];
 
   hedgeLog: {
     ts: number;
@@ -120,5 +127,17 @@ export function useLiveBackend(active: boolean) {
     }
   }, []);
 
-  return { state, connected, setHedge, backend: BACKEND };
+  const setMode = useCallback(async (mode: 'delta' | 'sentiment') => {
+    try {
+      await fetch(`${BACKEND}/api/hedge/mode`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      });
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  return { state, connected, setHedge, setMode, backend: BACKEND };
 }

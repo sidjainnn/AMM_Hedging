@@ -6,11 +6,11 @@
 
 import { RNG } from '../rng';
 import type { Market } from '../market';
-import type { AgentStats } from '../types';
+import type { AgentStats, MarketSentiment } from '../types';
 import { SimpleAgents } from './simple';
 import { BehavioralAgents } from './behavioral';
 
-export type { AgentStats };
+export type { AgentStats, MarketSentiment };
 
 export type AgentModel = 'simple' | 'behavioral';
 
@@ -30,6 +30,7 @@ export interface AgentEngine {
   // optional wallet/reward hooks (behavioral model only)
   onSettled?(markets: Market[], spot: number): void;
   stats?(): AgentStats;
+  sentiment?(): MarketSentiment;
 }
 
 export function makeAgents(model: AgentModel, rng: RNG): AgentEngine {

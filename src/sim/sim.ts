@@ -184,6 +184,7 @@ export class Simulation {
       hedgeLog: this.hedge.log,
       tauStar: this.tauStar,
       agentStats: this.agents.stats?.(),
+      sentiment: this.agents.sentiment?.(),
     };
   }
 

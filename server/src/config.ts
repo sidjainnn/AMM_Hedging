@@ -32,6 +32,11 @@ export const config = {
   hedgeEnabled: (env.HEDGE_ENABLED ?? 'false').toLowerCase() === 'true',
   maxPositionBtc: parseFloat(env.MAX_POSITION_BTC ?? '0.05'),
   hedgeIntervalSec: parseInt(env.HEDGE_INTERVAL_SEC ?? '10', 10),
+  // 'delta' = neutralise the MM book (Book C); 'sentiment' = take a directional
+  // perp position from the prediction-market smart-money signal.
+  hedgeMode: (env.HEDGE_MODE ?? 'sentiment') as 'delta' | 'sentiment',
+  // at sentiment lean = ±1, hold sentimentGain × maxPositionBtc.
+  sentimentGain: parseFloat(env.SENTIMENT_GAIN ?? '1'),
   hasKeys(): boolean {
     return this.apiKey.length > 0 && this.apiSecret.length > 0;
   },

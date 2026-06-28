@@ -323,4 +323,38 @@ export class BehavioralAgents implements AgentEngine {
       richest,
     };
   }
+
+  // Information sentiment = SKILL-WEIGHTED net positioning ("smart money").
+  // Each agent's YES/NO holdings are weighted by wealth-as-skill (winners count
+  // more). Aggregated across the BTC binaries it gives a directional read that
+  // tends to LEAD the engine price toward fair value. pSent in [0,1], lean in
+  // [-1,1] (+ = smart money bullish on BTC). `informedShare` = fraction of the
+  // weighted positioning held by traders currently in profit.
+  sentiment() {
+    let wYes = 0;
+    let wNo = 0;
+    let informedYes = 0;
+    let informedNo = 0;
+    for (const t of this.pop) {
+      const skill = clamp(t.balance / t.startBalance, 0.2, 4);
+      const winning = t.balance > t.startBalance;
+      for (const id in t.positions) {
+        const p = t.positions[id];
+        wYes += skill * p.yes;
+        wNo += skill * p.no;
+        if (winning) {
+          informedYes += skill * p.yes;
+          informedNo += skill * p.no;
+        }
+      }
+    }
+    const tot = wYes + wNo;
+    const infTot = informedYes + informedNo;
+    return {
+      pSent: tot > 0 ? wYes / tot : 0.5,
+      lean: tot > 0 ? (wYes - wNo) / tot : 0,
+      weight: tot,
+      informedLean: infTot > 0 ? (informedYes - informedNo) / infTot : 0,
+    };
+  }
 }

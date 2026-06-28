@@ -5,13 +5,14 @@ import {
   YAxis,
   Tooltip,
   ResponsiveContainer,
+  ReferenceLine,
 } from 'recharts';
 
 import { useLiveBackend } from './useLiveBackend';
 import { fmt, usd, usd2, cls } from './format';
 
 export function Page4Live() {
-  const { state, connected, setHedge, backend } = useLiveBackend(true);
+  const { state, connected, setHedge, setMode, backend } = useLiveBackend(true);
 
   if (!state) {
     return (
@@ -268,6 +269,52 @@ npm start`}
               </span>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* FUTURES ACCOUNT + SENTIMENT HEDGE — does the perp hedge concept work? */}
+      <div className="panel">
+        <h3>
+          Futures account & sentiment hedge
+          <span className="hint"> · real demo equity over time</span>
+          <span style={{ float: 'right' }}>
+            <span className="seg">
+              <button className={L.hedgeMode === 'delta' ? 'on' : ''} onClick={() => setMode('delta')}>δ delta</button>
+              <button className={L.hedgeMode === 'sentiment' ? 'on' : ''} onClick={() => setMode('sentiment')}>sentiment</button>
+            </span>
+          </span>
+        </h3>
+
+        <div className="strip" style={{ marginBottom: 12 }}>
+          <div className="cell"><div className="lbl">wallet balance</div><div className="val">{L.account ? usd2(L.account.walletBalance) : '—'}</div><div className="hint">USDT (demo)</div></div>
+          <div className="cell"><div className="lbl">equity</div><div className="val">{L.account ? usd2(L.account.equity) : '—'}</div><div className="hint">wallet + unrealized</div></div>
+          <div className="cell"><div className="lbl">unrealized PnL</div><div className={'val ' + (L.account ? cls(L.account.unrealizedPnl) : '')}>{L.account ? usd2(L.account.unrealizedPnl) : '—'}</div><div className="hint">open perp</div></div>
+          <div className="cell"><div className="lbl">P&L since start</div><div className={'val ' + cls(L.accountPnl)}>{usd2(L.accountPnl)}</div><div className="hint">does it work?</div></div>
+          <div className="cell"><div className="lbl">smart-money P(up)</div><div className="val">{state.sentiment ? fmt(state.sentiment.pSent * 100, 1) + '¢' : '—'}</div><div className="hint">lean {state.sentiment ? fmt(state.sentiment.lean, 2) : '—'}</div></div>
+        </div>
+
+        <p className="hint" style={{ marginBottom: 8 }}>
+          {L.hedgeMode === 'sentiment'
+            ? 'Sentiment mode: hold a BTC perp ∝ smart-money lean (long when the informed crowd is bullish). Target = lean × position cap.'
+            : 'Delta mode: neutralise the market-maker book’s settlement-value delta (Book C).'}
+        </p>
+
+        <ResponsiveContainer width="100%" height={210}>
+          <LineChart data={L.equitySeries} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+            <XAxis dataKey="t" tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b" />
+            <YAxis yAxisId="eq" domain={['auto', 'auto']} tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b" width={64} tickFormatter={(v) => usd(Number(v))} />
+            <YAxis yAxisId="btc" orientation="right" domain={['auto', 'auto']} tick={{ fill: '#6b6b40', fontSize: 10 }} stroke="#232a3b" width={48} tickFormatter={(v) => (Number(v) / 1000).toFixed(0) + 'k'} />
+            <Tooltip contentStyle={{ background: '#131722', border: '1px solid #232a3b', borderRadius: 8, fontSize: 12 }}
+              labelStyle={{ color: '#8a93a6' }} formatter={(v, n) => [n === 'btc' ? '$' + fmt(Number(v), 0) : usd2(Number(v)), n === 'btc' ? 'BTC' : 'equity']} />
+            {L.startEquity != null && <ReferenceLine yAxisId="eq" y={L.startEquity} stroke="#3a4357" strokeDasharray="4 4" />}
+            <Line yAxisId="eq" type="monotone" dataKey="equity" stroke="var(--green)" dot={false} strokeWidth={1.8} isAnimationActive={false} />
+            <Line yAxisId="btc" type="monotone" dataKey="btc" stroke="var(--sim)" dot={false} strokeWidth={1} opacity={0.5} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+        <div className="legend">
+          <span><i style={{ background: 'var(--green)' }} />demo futures equity</span>
+          <span><i style={{ background: 'var(--sim)' }} />BTC (right)</span>
+          <span className="hint">dashed = starting equity</span>
         </div>
       </div>
 

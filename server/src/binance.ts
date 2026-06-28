@@ -170,6 +170,24 @@ export async function getPositionUnits(): Promise<number> {
   return p ? parseFloat(p.positionAmt) : 0;
 }
 
+// Futures account snapshot (signed). USDⓈ-M figures are in USDT.
+export interface FuturesAccount {
+  walletBalance: number; // total wallet balance
+  unrealizedPnl: number; // open-position mark-to-market
+  equity: number; // margin balance = wallet + unrealized
+  available: number; // free margin
+}
+
+export async function getAccount(): Promise<FuturesAccount> {
+  const r = await signedRequest<any>(config.futuresBase, 'GET', '/fapi/v2/account', {});
+  return {
+    walletBalance: parseFloat(r.totalWalletBalance),
+    unrealizedPnl: parseFloat(r.totalUnrealizedProfit),
+    equity: parseFloat(r.totalMarginBalance),
+    available: parseFloat(r.availableBalance),
+  };
+}
+
 export interface OrderResult {
   dryRun: boolean;
   side: 'BUY' | 'SELL';

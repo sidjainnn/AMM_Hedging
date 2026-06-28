@@ -140,6 +140,14 @@ export interface SimState {
   hedgeLog: HedgeActivity[];
   tauStar: number; // current flatten threshold in ticks (approx)
   agentStats?: AgentStats;
+  sentiment?: MarketSentiment;
+}
+
+export interface MarketSentiment {
+  pSent: number; // skill-weighted implied P(YES) — "smart money" probability
+  lean: number; // -1..+1 net directional lean (+ = bullish BTC)
+  weight: number; // total skill-weighted open interest behind the signal
+  informedLean: number; // lean restricted to currently-profitable traders
 }
 
 export interface AgentStats {

@@ -27,6 +27,11 @@ async function main() {
     runner.setHedgeEnabled(on);
     res.json({ hedgeEnabled: on, dryRun: config.dryRun });
   });
+  app.post('/api/hedge/mode', (req, res) => {
+    const mode = req.body?.mode === 'sentiment' ? 'sentiment' : 'delta';
+    runner.setHedgeMode(mode);
+    res.json({ hedgeMode: mode });
+  });
 
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
