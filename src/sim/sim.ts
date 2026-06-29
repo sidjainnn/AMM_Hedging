@@ -183,7 +183,7 @@ export class Simulation {
       pnlSeries: this.pnlSeries,
       hedgeLog: this.hedge.log,
       tauStar: this.tauStar,
-      agentStats: this.agents.stats?.(),
+      agentStats: this.agents.stats?.(this.mm.markets),
       sentiment: this.agents.sentiment?.(),
     };
   }

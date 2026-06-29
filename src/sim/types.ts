@@ -156,6 +156,8 @@ export interface AgentStats {
   bankrupt: number;
   winners: number;
   totalBalance: number;
+  startTotal: number; // sum of starting bankrolls
+  pnl: number; // aggregate agent P&L (totalBalance − startTotal)
   avgBalance: number;
   richest: number;
 }

@@ -275,6 +275,29 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
         </div>
       </div>
 
+      {/* P&L & money flow — who's making/losing money */}
+      {(() => {
+        const bk = state.books.find((b) => b.id === 'C');
+        if (!bk) return null;
+        const mmNet = bk.spreadCapture + bk.inventoryPnl + bk.hedgePnl;
+        const agentPnl = state.agentStats?.pnl ?? 0;
+        return (
+          <div className="panel">
+            <h3>P&amp;L &amp; money flow <span className="hint">· market maker vs the crowd</span></h3>
+            <div className="strip">
+              <div className="cell"><div className="lbl">MM spread captured</div><div className="val pos">{usd2(bk.spreadCapture)}</div><div className="hint">the vig (revenue)</div></div>
+              <div className="cell"><div className="lbl">MM inventory P&amp;L</div><div className={'val ' + cls(bk.inventoryPnl)}>{usd2(bk.inventoryPnl)}</div><div className="hint">skew + LMSR subsidy (− = loss)</div></div>
+              <div className="cell"><div className="lbl">hedge P&amp;L</div><div className={'val ' + cls(bk.hedgePnl)}>{usd2(bk.hedgePnl)}</div><div className="hint">perp cost / offset</div></div>
+              <div className="cell"><div className="lbl">market-maker NET</div><div className={'val ' + cls(mmNet)}>{usd2(mmNet)}</div><div className="hint">spread + inv + hedge</div></div>
+              <div className="cell"><div className="lbl">agents NET P&amp;L</div><div className={'val ' + cls(agentPnl)}>{usd2(agentPnl)}</div><div className="hint">the crowd, realised</div></div>
+            </div>
+            <p className="hint" style={{ marginTop: 8 }}>
+              The crowd's gains come from the MM's inventory loss + the LMSR liquidity subsidy, partly clawed back by the spread (vig). The hedge converts inventory *direction* risk into a small, steady cost.
+            </p>
+          </div>
+        );
+      })()}
+
       {/* agent population wealth — the reward signal */}
       {state.agentStats && (
         <div className="panel">

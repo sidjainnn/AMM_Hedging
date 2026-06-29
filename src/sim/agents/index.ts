@@ -29,7 +29,7 @@ export interface AgentEngine {
   step(ctx: AgentContext): void;
   // optional wallet/reward hooks (behavioral model only)
   onSettled?(markets: Market[], spot: number): void;
-  stats?(): AgentStats;
+  stats?(markets?: Market[]): AgentStats; // markets let it mark open positions
   sentiment?(): MarketSentiment;
 }
 

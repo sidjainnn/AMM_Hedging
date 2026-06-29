@@ -77,10 +77,12 @@ function poisson(rng: RNG, lambda: number): number {
 
 export class BehavioralAgents implements AgentEngine {
   private pop: Trader[];
+  private startTotal: number;
 
   constructor(private base: RNG) {
     const r = base.derive('population');
     this.pop = Array.from({ length: POP }, () => this.makeTrader(r));
+    this.startTotal = this.pop.reduce((a, t) => a + t.startBalance, 0);
   }
 
   private makeTrader(r: RNG): Trader {
@@ -299,19 +301,32 @@ export class BehavioralAgents implements AgentEngine {
     }
   }
 
-  // Population wealth summary (the reward signal made visible).
-  stats() {
+  // Population wealth summary (the reward signal made visible). If `markets` are
+  // given, each trader's EQUITY = cash + open positions marked at engine P(YES)
+  // (so mid-window P&L isn't understated by cash spent on un-settled positions).
+  stats(markets?: Market[]) {
+    const pmark = new Map<string, number>();
+    if (markets) for (const m of markets) pmark.set(m.id, m.engine.pYes());
+    const equityOf = (t: Trader): number => {
+      let eq = t.balance;
+      if (markets) for (const id in t.positions) {
+        const p = pmark.get(id);
+        if (p !== undefined) eq += t.positions[id].yes * p + t.positions[id].no * (1 - p);
+      }
+      return eq;
+    };
     let total = 0;
     let active = 0;
     let bankrupt = 0;
     let richest = 0;
-    let winners = 0; // balance above their start
+    let winners = 0; // equity above their start
     for (const t of this.pop) {
-      total += t.balance;
+      const eq = equityOf(t);
+      total += eq;
       if (t.balance >= MIN_BALANCE) active++;
       else bankrupt++;
-      if (t.balance > t.startBalance) winners++;
-      richest = Math.max(richest, t.balance);
+      if (eq > t.startBalance) winners++;
+      richest = Math.max(richest, eq);
     }
     return {
       count: this.pop.length,
@@ -319,6 +334,8 @@ export class BehavioralAgents implements AgentEngine {
       bankrupt,
       winners,
       totalBalance: total,
+      startTotal: this.startTotal,
+      pnl: total - this.startTotal,
       avgBalance: total / this.pop.length,
       richest,
     };
