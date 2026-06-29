@@ -122,6 +122,21 @@ export class Runner {
     };
   }
 
+  // lightweight status for the 5m-page hedge button (no full sim snapshot)
+  hedgeStatus() {
+    return {
+      hedgeEnabled: this.hedger.enabled,
+      dryRun: config.dryRun,
+      hasKeys: config.hasKeys(),
+      hedgeMode: this.hedgeMode,
+      livePosition: this.hedger.livePosition,
+      equity: this.account?.equity ?? null,
+      mark: this.futuresMarkPrice,
+      symbol: config.symbol,
+      hedgeError: this.hedger.lastError,
+    };
+  }
+
   setHedgeEnabled(on: boolean): void {
     this.hedger.enabled = on;
   }

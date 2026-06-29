@@ -21,6 +21,7 @@ async function main() {
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, dryRun: config.dryRun }));
   app.get('/api/price', (_req, res) => res.json({ price: runner.spotPrice, symbol: config.symbol }));
+  app.get('/api/hedge/status', (_req, res) => res.json(runner.hedgeStatus()));
   app.get('/api/state', (_req, res) => res.json(runner.getState()));
   app.post('/api/hedge/enable', (req, res) => {
     const on = !!req.body?.enabled;

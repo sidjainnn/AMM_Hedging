@@ -7,6 +7,7 @@ import type { SimState, Side, EngineKind, QuotingMode } from '../sim/types';
 import type { AgentModel } from '../sim/agents';
 import { fmt, usd, usd2, cls, ticksToClock } from './format';
 import { Seg, Slider } from './widgets';
+import { useHedgeControl } from './useHedgeControl';
 
 const TENOR = '5m';
 
@@ -49,6 +50,7 @@ const LAB_COLOR: Record<LabStrat, string> = { none: 'var(--muted)', delta: 'var(
 export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: SimState; refresh: () => void; }) {
   const mkt = state.markets.find((m) => m.tenorLabel === TENOR) ?? null;
 
+  const hedgeCtl = useHedgeControl();
   const [size, setSize] = useState(10);
   const [pos, setPos] = useState<UserPos>({ marketId: '', yes: 0, no: 0, cost: 0 });
   const [realized, setRealized] = useState(0);
@@ -187,6 +189,43 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
           </div>
         </div>
       </div>
+
+      {/* Binance demo hedge — on/off control */}
+      {(() => {
+        const h = hedgeCtl.status;
+        const on = !!h?.hedgeEnabled;
+        const live = h && !h.dryRun && h.hasKeys;
+        return (
+          <div className="panel" style={{ borderLeft: `3px solid ${on ? 'var(--green)' : 'var(--border)'}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+              <div>
+                <h3 style={{ margin: 0 }}>
+                  Binance hedge (demo)
+                  <span className="hint"> · {hedgeCtl.connected ? `${h?.hedgeMode ?? ''} mode` : 'backend offline'}</span>
+                </h3>
+                <div className="hint" style={{ marginTop: 4 }}>
+                  {!hedgeCtl.connected ? 'start the server (cd server && npm start)'
+                    : !h?.hasKeys ? 'no API keys in server/.env'
+                    : on ? (live ? '● LIVE — placing real demo perp orders' : '○ ON — dry-run (set DRY_RUN=false in .env for real orders)')
+                    : 'hedging off — no orders being placed'}
+                  {h && hedgeCtl.connected && (
+                    <> · pos {fmt(h.livePosition, 4)} BTC{h.equity != null ? ` · equity ${usd2(h.equity)}` : ''}</>
+                  )}
+                  {h?.hedgeError && <span className="neg"> · {h.hedgeError.slice(0, 60)}</span>}
+                </div>
+              </div>
+              <button
+                className={'btn ' + (on ? 'danger' : 'primary')}
+                disabled={!hedgeCtl.connected || !h?.hasKeys}
+                style={on ? { background: 'var(--red)', borderColor: 'var(--red)' } : { background: 'var(--green)', borderColor: 'var(--green)' }}
+                onClick={() => hedgeCtl.setEnabled(!on)}
+              >
+                {on ? '■ Turn hedge OFF' : '▶ Turn hedge ON'}
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* research controls — engine / quoting / agents */}
       <div className="panel">
