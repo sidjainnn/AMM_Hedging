@@ -58,6 +58,18 @@ The only valid test is an **A/B on the real (demo) venue**, not more sim.
 - [ ] Confirm the hedge helps in vol and is ~flat-to-slightly-negative in calm
       (expected) — net acceptable after costs.
 
+## E. Break-even acceptance test (spread + hedge ≥ 0 on the 5m market)
+Run `src/sim/breakeven.ts` — 64 5-minute windows, delta hedge ON, decomposed
+into spread (revenue) vs inventory subsidy+adverse-selection vs hedge cost.
+- **Pass criterion:** mean net per 5-minute window ≥ 0 **and** break-even rate
+  ≥ ~60% (calm), then re-check tail behaviour on volatile windows (`experiment.ts`).
+- **The only guarantee lever is the spread (vig).** With one ATM market per tenor:
+  k=25 → −$7/window (38%, FAIL); **k=12 → +$51/window (78%, PASS)**; k=9 → 95%.
+  (Manual equivalent: half-spread ≥ ~5–6¢.) Default is now **k=12**.
+- Other levers: lower `b` (smaller LMSR subsidy/market) or more noise volume
+  (more spread income) — but spread width is the controllable guarantee.
+- **Trade-off:** wider spread = break-even cushion but less competitive quotes.
+
 ## TL;DR
 The plumbing works and reconciles; **whether hedging is worth it is an empirical
 question that only a costed A/B on the demo venue across volatile periods can

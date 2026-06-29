@@ -19,9 +19,12 @@ export const defaultConfig: SimConfig = {
     manualHalfSpread: 0.01,
     gamma: 1.0,
     sigma: 0.05,
-    // k≈25 sets the adverse-selection half-spread (~2/k) wide enough that
-    // spread capture covers the subsidy + adverse selection → break-even+.
-    k: 25,
+    // k sets the adverse-selection half-spread (~2/k). With one ATM market per
+    // tenor, k=25 did NOT break even (spread ≈ inventory subsidy + hedge cost);
+    // k=12 clears it with margin (~+$51/5m-window, 78% of windows ≥0 in QA).
+    // Lower k = wider spread = more margin but less competitive. See
+    // src/sim/breakeven.ts and docs/hedging-validation-and-qa.md.
+    k: 12,
   },
   btcStart: 68000,
   btcVolPerTick: 0.0011, // TRUE sigma per tick
