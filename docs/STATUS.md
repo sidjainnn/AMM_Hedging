@@ -114,6 +114,12 @@ variance is adverse selection (unhedgeable). Live combined hedge verified placin
 real demo orders (then flattened; back to DRY_RUN). Run:
 `src/sim/experiment.ts`.
 
+## QA / hedging-effectiveness — [hedging-validation-and-qa.md](hedging-validation-and-qa.md)
+5m-market QA checklist + how to actually prove the hedge works: A/B (hedged vs
+unhedged) on the demo venue across calm AND volatile periods, metric = risk
+removed per $ of cost. Close slippage/funding/latency/churn gaps first or the
+test overstates effectiveness.
+
 ## Deferred design
 `docs/agents-implementation.md` — advanced agent reward (fractional-Kelly for
 informed, CRRA/squared penalty for retail) + the precision-weighted sentiment
