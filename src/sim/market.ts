@@ -55,13 +55,15 @@ export class Market {
   }
 
   // Marketable order vs the ENGINE — moves price. side = what user buys.
+  // Returns the cash the buyer paid (engine-curve cost + spread) so callers can
+  // book the exact amount and reconcile against the house's cashCollected.
   executeEngineBuy(
     side: Side,
     shares: number,
     actor: string,
     tick: number
-  ): void {
-    if (shares <= 0) return;
+  ): number {
+    if (shares <= 0) return 0;
     const half = (this.quote.ask - this.quote.bid) / 2;
     const engineCash = this.engine.applyBuy(side, shares);
     const spread = shares * Math.max(half, 0);
@@ -70,6 +72,7 @@ export class Market {
     this.spreadCapture += spread;
     const px = paid / shares;
     this.print({ tick, side, shares, price: px, channel: 'engine', actor });
+    return paid;
   }
 
   // Resting limit order (may later pair-mint or be hit by the engine quote).

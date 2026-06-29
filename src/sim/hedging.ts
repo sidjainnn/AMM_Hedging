@@ -124,20 +124,17 @@ export class HedgeEngine {
   }
 
   // common (book-independent) P&L: realised + live mark of the MM book.
-  private commonPnl(
-    markets: Market[],
-    spot: number,
-    trueSigma: number,
-    tick: number
-  ): { spread: number; inventory: number } {
+  // Mark the open inventory at the ENGINE price (the actual transactable mid) —
+  // the same price agents mark their positions at — so MM P&L and agent P&L
+  // reconcile (one side's gain is the other's loss). Marking with a separate
+  // model σ would double-count and make both sides look profitable.
+  private commonPnl(markets: Market[]): { spread: number; inventory: number } {
     let liveSpread = 0;
     let liveInventory = 0;
     for (const m of markets) {
       liveSpread += m.spreadCapture;
-      const tau = m.tau(tick);
-      const p = tau > 0 ? digitalProb(spot, m.strike, trueSigma, tau).p : spot > m.strike ? 1 : 0;
+      const p = m.engine.pYes(); // engine mid = mark-to-market price
       const markLiability = m.engine.qY * p + m.engine.qN * (1 - p);
-      // fair premiums collected (ex-spread) minus marked liability
       liveInventory += m.cashCollected - m.spreadCapture - markLiability;
     }
     return {
@@ -156,7 +153,7 @@ export class HedgeEngine {
   ): { aggregateDelta: number; books: HedgeBookState[]; tauStar: number } {
     this.tauStar =
       estSigma > 0 ? (this.kFlat / estSigma) ** 2 : 0;
-    const common = this.commonPnl(markets, spot, trueSigma, simTick);
+    const common = this.commonPnl(markets);
 
     const states: HedgeBookState[] = [];
     for (const bk of this.books) {

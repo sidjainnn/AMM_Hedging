@@ -25,6 +25,20 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
   const histRef = useRef<{ t: number; yes: number }[]>([]);
   const [, force] = useState(0);
   const prevRef = useRef<{ id: string; strike: number } | null>(null);
+  const prevTickRef = useRef(0);
+
+  // topbar Reset rewinds the sim (tick → 0): flatten the user's holdings too so
+  // both parties start from no positions.
+  useEffect(() => {
+    if (state.tick < prevTickRef.current) {
+      setWallet(1000);
+      setPos({ marketId: '', yes: 0, no: 0, cost: 0 });
+      setRealized(0);
+      histRef.current = [];
+      prevRef.current = null;
+    }
+    prevTickRef.current = state.tick;
+  }, [state.tick]);
 
   useEffect(() => {
     if (!mkt) return;
@@ -68,8 +82,7 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
     // finite wallet: buy at most what the cash on hand allows
     const qty = Math.min(size, Math.floor((wallet / price) * 100) / 100);
     if (qty < 0.01) return; // can't afford
-    const cost = qty * price;
-    sim.userTrade(mkt.id, side, qty);
+    const cost = sim.userTrade(mkt.id, side, qty); // exact engine charge
     setWallet((w) => w - cost);
     setPos((p) => ({
       marketId: mkt.id,

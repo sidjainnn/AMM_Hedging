@@ -233,8 +233,8 @@ export class BehavioralAgents implements AgentEngine {
       const affordable = Math.floor((t.balance / Math.max(price, 1e-4)) * 100) / 100;
       size = Math.min(size, affordable);
       if (size < 0.4) return; // can't afford to act
-      const cost = size * price;
-      m.executeEngineBuy(side, size, t.archetype, ctx.tick);
+      // book the EXACT cash the engine charged (reconciles with the MM book)
+      const cost = m.executeEngineBuy(side, size, t.archetype, ctx.tick);
       t.balance -= cost;
       const pos = t.positions[m.id] ?? { yes: 0, no: 0, cost: 0 };
       if (side === 'YES') pos.yes += size;
