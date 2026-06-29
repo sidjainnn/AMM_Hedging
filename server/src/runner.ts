@@ -18,7 +18,7 @@ export class Runner {
   futuresMarkPrice = 0;
   feedError: string | null = null;
 
-  hedgeMode: 'delta' | 'sentiment' = config.hedgeMode;
+  hedgeMode: 'delta' | 'sentiment' | 'combined' = config.hedgeMode;
   account: FuturesAccount | null = null;
   startEquity: number | null = null;
   equitySeries: { t: number; equity: number; btc: number }[] = [];
@@ -54,13 +54,16 @@ export class Runner {
   // BTC perp units to hold this tick, given the active mode.
   private hedgeTarget(): number {
     const s = this.sim.getState();
+    const delta = s.books.find((b) => b.id === 'C')?.targetUnits ?? 0; // skew-neutralising δ
+    const lean = s.sentiment?.lean ?? 0;
+    const cap = config.maxNotionalUsdt / (this.futuresMarkPrice || 1); // full-budget cap
     if (this.hedgeMode === 'sentiment') {
-      // directional: lean ∈ [-1,1] → ±(gain × cap). + lean = smart money bullish.
-      const lean = s.sentiment?.lean ?? 0;
-      return lean * config.sentimentGain * config.maxPositionBtc;
+      return lean * config.sentimentGain * cap; // directional smart-money bet
     }
-    // delta: neutralise Book C's target
-    return s.books.find((b) => b.id === 'C')?.targetUnits ?? 0;
+    if (this.hedgeMode === 'combined') {
+      return delta + 0.5 * cap * lean * config.sentimentGain; // hedge skew + tilt
+    }
+    return delta; // delta: neutralise the liquidity skew
   }
 
   private async tick(): Promise<void> {
@@ -122,7 +125,7 @@ export class Runner {
   setHedgeEnabled(on: boolean): void {
     this.hedger.enabled = on;
   }
-  setHedgeMode(mode: 'delta' | 'sentiment'): void {
+  setHedgeMode(mode: 'delta' | 'sentiment' | 'combined'): void {
     this.hedgeMode = mode;
   }
 }

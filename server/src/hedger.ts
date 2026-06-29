@@ -33,8 +33,9 @@ export class Hedger {
     if (!this.enabled || !config.hasKeys()) return;
     try {
       const f = await getFilters();
-      // clamp the target to the safety cap
-      let target = Math.max(-config.maxPositionBtc, Math.min(config.maxPositionBtc, targetUnits));
+      // clamp to the notional budget (≈ the whole 10k): cap = maxNotional / price
+      const cap = config.maxNotionalUsdt / markPrice;
+      const target = Math.max(-cap, Math.min(cap, targetUnits));
       this.livePosition = await getPositionUnits();
       const diff = target - this.livePosition;
       if (Math.abs(diff) * markPrice < f.minNotional || Math.abs(diff) < f.minQty) {

@@ -22,7 +22,7 @@ export interface LiveInfo {
   hasKeys: boolean;
 
   hedgeEnabled: boolean;
-  hedgeMode: 'delta' | 'sentiment';
+  hedgeMode: 'delta' | 'sentiment' | 'combined';
   livePosition: number;
   maxPositionBtc: number;
 
@@ -127,7 +127,7 @@ export function useLiveBackend(active: boolean) {
     }
   }, []);
 
-  const setMode = useCallback(async (mode: 'delta' | 'sentiment') => {
+  const setMode = useCallback(async (mode: 'delta' | 'sentiment' | 'combined') => {
     try {
       await fetch(`${BACKEND}/api/hedge/mode`, {
         method: 'POST',

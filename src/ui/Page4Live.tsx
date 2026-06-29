@@ -281,6 +281,7 @@ npm start`}
             <span className="seg">
               <button className={L.hedgeMode === 'delta' ? 'on' : ''} onClick={() => setMode('delta')}>δ delta</button>
               <button className={L.hedgeMode === 'sentiment' ? 'on' : ''} onClick={() => setMode('sentiment')}>sentiment</button>
+              <button className={L.hedgeMode === 'combined' ? 'on' : ''} onClick={() => setMode('combined')}>combined</button>
             </span>
           </span>
         </h3>
@@ -295,8 +296,10 @@ npm start`}
 
         <p className="hint" style={{ marginBottom: 8 }}>
           {L.hedgeMode === 'sentiment'
-            ? 'Sentiment mode: hold a BTC perp ∝ smart-money lean (long when the informed crowd is bullish). Target = lean × position cap.'
-            : 'Delta mode: neutralise the market-maker book’s settlement-value delta (Book C).'}
+            ? 'Sentiment mode: hold a BTC perp ∝ smart-money lean (long when the informed crowd is bullish). Target = lean × notional cap.'
+            : L.hedgeMode === 'combined'
+            ? 'Combined mode: delta-hedge the liquidity skew + a 50%-cap sentiment tilt (hedge the inventory, lean with smart money).'
+            : 'Delta mode: neutralise the market-maker book’s settlement-value delta (the liquidity skew).'}
         </p>
 
         <ResponsiveContainer width="100%" height={210}>

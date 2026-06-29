@@ -105,6 +105,15 @@ inventory risk a CLOB avoids." Two costs of AMM inventory: **directional**
 4. **Hedge frictions** — slippage + stochastic funding so the demo result is
    realistic (currently fill ≈ mark, funding constant).
 
+## Experiment result (5×5min hedging) — [experiment-results.md](experiment-results.md)
+Hedging the AMM liquidity skew on perps (full $10k budget) over 5 markets,
+stressed across BTC outcomes on real Binance data: **delta/combined remove
+~33–37% of P&L dispersion and turn the worst case from −$115 to +$85/+$109**;
+**combined (delta + sentiment tilt) is best**, sentiment-alone weakest; residual
+variance is adverse selection (unhedgeable). Live combined hedge verified placing
+real demo orders (then flattened; back to DRY_RUN). Run:
+`src/sim/experiment.ts`.
+
 ## Deferred design
 `docs/agents-implementation.md` — advanced agent reward (fractional-Kelly for
 informed, CRRA/squared penalty for retail) + the precision-weighted sentiment

@@ -28,7 +28,8 @@ async function main() {
     res.json({ hedgeEnabled: on, dryRun: config.dryRun });
   });
   app.post('/api/hedge/mode', (req, res) => {
-    const mode = req.body?.mode === 'sentiment' ? 'sentiment' : 'delta';
+    const m = req.body?.mode;
+    const mode = m === 'sentiment' || m === 'combined' ? m : 'delta';
     runner.setHedgeMode(mode);
     res.json({ hedgeMode: mode });
   });
