@@ -1,16 +1,50 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
+  AreaChart, Area, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
 import type { Simulation } from '../sim/sim';
 import type { SimState, Side, EngineKind, QuotingMode } from '../sim/types';
 import type { AgentModel } from '../sim/agents';
-import { fmt, usd2, cls, ticksToClock } from './format';
+import { fmt, usd, usd2, cls, ticksToClock } from './format';
 import { Seg, Slider } from './widgets';
 
 const TENOR = '5m';
 
 interface UserPos { marketId: string; yes: number; no: number; cost: number; }
+
+// ---- Hedge Risk Lab: live perp overlays on the same agent flow ----
+const LAB_BUDGET = 10000;       // full-budget notional cap
+const LAB_FEE_BPS = 2;          // per-side hedge fee (so the cost shows)
+type LabStrat = 'none' | 'delta' | 'sentiment' | 'combined';
+const LAB_STRATS: LabStrat[] = ['none', 'delta', 'sentiment', 'combined'];
+interface OBook { pos: number; avg: number; realized: number; fees: number; }
+const newBook = (): OBook => ({ pos: 0, avg: 0, realized: 0, fees: 0 });
+function obReconcile(b: OBook, target: number, spot: number) {
+  const trade = target - b.pos;
+  if (Math.abs(trade) < 1e-7) return;
+  b.fees += Math.abs(trade) * spot * (LAB_FEE_BPS / 1e4);
+  if (b.pos !== 0 && Math.sign(trade) !== Math.sign(b.pos)) {
+    const closed = Math.min(Math.abs(trade), Math.abs(b.pos));
+    b.realized += Math.sign(b.pos) * closed * (spot - b.avg);
+    const rem = b.pos + trade;
+    if (Math.sign(rem) === Math.sign(trade) && rem !== 0) b.avg = spot;
+    b.pos = rem;
+  } else {
+    const np = b.pos + trade;
+    b.avg = np !== 0 ? (b.pos * b.avg + trade * spot) / np : 0;
+    b.pos = np;
+  }
+}
+const obPnl = (b: OBook, spot: number) => b.realized + b.pos * (spot - b.avg) - b.fees;
+const labClamp = (x: number, c: number) => Math.max(-c, Math.min(c, x));
+function stdevInc(a: number[]): number {
+  if (a.length < 3) return 0;
+  const d: number[] = []; for (let i = 1; i < a.length; i++) d.push(a[i] - a[i - 1]);
+  const m = d.reduce((x, y) => x + y, 0) / d.length;
+  return Math.sqrt(d.reduce((x, y) => x + (y - m) ** 2, 0) / d.length);
+}
+function maxDD(a: number[]): number { let p = -Infinity, dd = 0; for (const v of a) { p = Math.max(p, v); dd = Math.max(dd, p - v); } return dd; }
+const LAB_COLOR: Record<LabStrat, string> = { none: 'var(--muted)', delta: 'var(--bookA)', sentiment: 'var(--bookC)', combined: 'var(--green)' };
 
 export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: SimState; refresh: () => void; }) {
   const mkt = state.markets.find((m) => m.tenorLabel === TENOR) ?? null;
@@ -27,8 +61,13 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
   const prevRef = useRef<{ id: string; strike: number } | null>(null);
   const prevTickRef = useRef(0);
 
+  // Hedge Risk Lab: 4 perp overlays on the same flow + their net equity curves
+  const labBooks = useRef<Record<LabStrat, OBook>>({ none: newBook(), delta: newBook(), sentiment: newBook(), combined: newBook() });
+  const labSeries = useRef<{ t: number; none: number; delta: number; sentiment: number; combined: number }[]>([]);
+  const labTickRef = useRef(-1);
+
   // topbar Reset rewinds the sim (tick → 0): flatten the user's holdings too so
-  // both parties start from no positions.
+  // both parties start from no positions; also reset the lab overlays.
   useEffect(() => {
     if (state.tick < prevTickRef.current) {
       setWallet(1000);
@@ -36,8 +75,35 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
       setRealized(0);
       histRef.current = [];
       prevRef.current = null;
+      labBooks.current = { none: newBook(), delta: newBook(), sentiment: newBook(), combined: newBook() };
+      labSeries.current = [];
     }
     prevTickRef.current = state.tick;
+  }, [state.tick]);
+
+  // advance the lab overlays once per tick (guarded vs StrictMode double-fire)
+  useEffect(() => {
+    const c = state.books.find((b) => b.id === 'C');
+    if (!c || state.tick === labTickRef.current) return;
+    labTickRef.current = state.tick;
+    const spot = state.btc;
+    const common = c.spreadCapture + c.inventoryPnl;
+    const delta = state.aggregateDelta;
+    const lean = state.sentiment?.lean ?? 0;
+    const cap = LAB_BUDGET / spot;
+    const targets: Record<LabStrat, number> = {
+      none: 0,
+      delta: labClamp(delta, cap),
+      sentiment: labClamp(lean * cap, cap),
+      combined: labClamp(delta + 0.5 * cap * lean, cap),
+    };
+    const row: any = { t: state.tick };
+    for (const st of LAB_STRATS) {
+      obReconcile(labBooks.current[st], targets[st], spot);
+      row[st] = common + obPnl(labBooks.current[st], spot);
+    }
+    labSeries.current = [...labSeries.current, row].slice(-600);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.tick]);
 
   useEffect(() => {
@@ -307,6 +373,63 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
             <p className="hint" style={{ marginTop: 8 }}>
               The crowd's gains come from the MM's inventory loss + the LMSR liquidity subsidy, partly clawed back by the spread (vig). The hedge converts inventory *direction* risk into a small, steady cost.
             </p>
+          </div>
+        );
+      })()}
+
+      {/* Hedge Risk Lab — does hedging reduce risk on THIS flow? */}
+      {(() => {
+        const S = labSeries.current;
+        if (S.length < 5) return (
+          <div className="panel"><h3>Hedge risk lab <span className="hint">· collecting data…</span></h3></div>
+        );
+        const metric = (st: LabStrat) => {
+          const arr = S.map((r) => r[st]);
+          return { net: arr[arr.length - 1], vol: stdevInc(arr), dd: maxDD(arr) };
+        };
+        const m: Record<LabStrat, ReturnType<typeof metric>> = {
+          none: metric('none'), delta: metric('delta'), sentiment: metric('sentiment'), combined: metric('combined'),
+        };
+        const baseDD = m.none.dd || 1e-9;
+        const baseVol = m.none.vol || 1e-9;
+        return (
+          <div className="panel">
+            <h3>Hedge risk lab <span className="hint">· same agent flow, four perp overlays sized to ${LAB_BUDGET} · does hedging cut risk?</span></h3>
+            <div className="row" style={{ gap: 16 }}>
+              <div style={{ flex: 1, minWidth: 320 }}>
+                <table>
+                  <thead><tr><th>strategy</th><th>net P&amp;L</th><th>P&amp;L vol</th><th>max drawdown</th><th>vs unhedged</th></tr></thead>
+                  <tbody>
+                    {LAB_STRATS.map((st) => (
+                      <tr key={st}>
+                        <td><i style={{ display: 'inline-block', width: 9, height: 9, borderRadius: 2, background: LAB_COLOR[st], marginRight: 6 }} />{st}</td>
+                        <td className={cls(m[st].net)}>{usd2(m[st].net)}</td>
+                        <td className="mut">{fmt(m[st].vol, 2)}</td>
+                        <td className="neg">{usd2(-m[st].dd)}</td>
+                        <td className={st === 'none' ? 'mut' : (m[st].dd < baseDD ? 'pos' : 'neg')}>
+                          {st === 'none' ? '—' : `${(((baseDD - m[st].dd) / baseDD) * 100).toFixed(0)}% DD, ${(((baseVol - m[st].vol) / baseVol) * 100).toFixed(0)}% vol`}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="hint" style={{ marginTop: 6 }}>
+                  Positive "vs unhedged" = lower risk than no hedge. The hedge is a cost in calm markets and pays off when BTC moves; watch the gap grow during volatility.
+                </p>
+              </div>
+              <div style={{ flex: 1, minWidth: 320 }}>
+                <ResponsiveContainer width="100%" height={180}>
+                  <LineChart data={S} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                    <XAxis dataKey="t" tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b" />
+                    <YAxis tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b" width={50} tickFormatter={(v) => usd(Number(v))} />
+                    <Tooltip contentStyle={{ background: '#131722', border: '1px solid #232a3b', borderRadius: 8, fontSize: 12 }} labelStyle={{ color: '#8a93a6' }} formatter={(v, n) => [usd2(Number(v)), n]} />
+                    {LAB_STRATS.map((st) => (
+                      <Line key={st} type="monotone" dataKey={st} stroke={LAB_COLOR[st]} dot={false} strokeWidth={st === 'none' ? 1 : 1.6} isAnimationActive={false} />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
           </div>
         );
       })()}
