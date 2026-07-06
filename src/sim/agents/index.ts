@@ -23,6 +23,7 @@ export interface AgentContext {
   noiseIntensity: number;
   directionalIntensity: number;
   arbIntensity: number;
+  lockoutTicks: number; // reduce-only window before expiry (0 = off)
 }
 
 export interface AgentEngine {

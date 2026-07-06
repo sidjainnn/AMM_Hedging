@@ -47,6 +47,10 @@ Build each layer testable before the next sits on it.
 ## Where things are documented
 - **`docs/STATUS.md` — current state, how to run, next steps. READ FIRST when resuming.**
 - `docs/agents-implementation.md` — deferred advanced agent reward + sentiment estimator.
+- `docs/experiment-results.md` — 5×5min hedging analysis (delta/sentiment/combined vs unhedged).
+- `docs/hedging-validation-and-qa.md` — hedge-effectiveness verdict + 5m-market QA + break-even (§E).
+- `docs/qa-risks.md` — QA guide: expected behaviors vs real bugs, known limits, acceptance commands.
+- `docs/ab-protocol.md` — pre-registered hedged-vs-unhedged A/B: design, metric, exclusions, criteria.
 - `docs/engines.md` — pricing engines (LMSR/CPMM/LS-LMSR), inventory, formulas.
 - `docs/markets.md` — rolling tenors, order book, matching, pair-minting.
 - `docs/quoting.md` — Stoikov + manual-spread overlay.

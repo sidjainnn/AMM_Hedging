@@ -1,7 +1,9 @@
 # STATUS / HANDOFF — read this first in a new session
 
-Last updated: end of the build session that added live Binance demo hedging +
-wallets + information sentiment.
+Last updated: build session that added the 5m-page P&L/money-flow panel, Hedge
+Risk Lab, the Binance hedge on/off button, the break-even harness (k=12 default),
+and MM/agent P&L reconciliation — on top of live Binance demo hedging + wallets +
+information sentiment.
 
 **To resume cold:** open Claude Code in `~/Desktop` (loads memory + CLAUDE.md),
 then say "read docs/STATUS.md and docs/agents-implementation.md".
@@ -63,7 +65,40 @@ server/         Node/Express backend (tsx): live Binance DEMO feed drives the
   winners→bigger. `agentStats` shown on 5m page.
 - **Information sentiment**: skill(wealth)-weighted net agent positioning →
   pSent + lean. Drives a **sentiment hedge mode** (perp ∝ smart-money lean)
-  vs the delta mode. Live page shows the demo **account equity over time**.
+  vs the delta mode plus a **combined** mode (delta + sentiment tilt, default).
+  Live page shows the demo **account equity over time**.
+- **5m page panels** (`Page5Market`): user wallet; **Hedge Risk Lab** (4 perp
+  overlays with vol/maxDD); **P&L & money-flow panel** — agent P&L + MM P&L
+  (incl. inventory loss), reconciled (MM net ≈ −agents net) because inventory is
+  marked at engine pYes; **reset** flattens both parties to zero;
+  **Binance hedge on/off button** (`useHedgeControl` → `/api/hedge/{status,
+  enable}`; OFF by default, requires keys) — VERIFIED firing/stopping real demo
+  orders, left OFF + flat.
+- **Volatility gate on the live hedger**: only hedges when realized per-tick vol
+  ≥ `HEDGE_VOL_THRESHOLD` (hysteresis on the way down), flat when calm — so the
+  hedge runs only in regimes where it out-earns fees. Surfaced on the 5m page
+  (armed/idle) + a `gated` overlay in the Hedge Risk Lab. See QA doc §B2.
+- **5m profit optimization (sim-frozen, then live)** — QA §B3: invWiden spread
+  widening + risk-tier hedge dial + per-tenor (5m=60s) lockout. Harness FULL:
+  $77.9/window, 97%, worst −$43, std 49 (PASS). The live runner gates the demo
+  hedge on BOTH the vol gate AND the inventory gate (`hedgeNotionalUsdt`, from the
+  sim's risk-tier `idleReason`): fires only when calm-and-skewed conditions both
+  clear → matches the risk-tiered sim. Status: armed / idle-vol / idle-inv /
+  disabled (shown on 5m page; `/api/hedge/status`). Env overrides
+  `HEDGE_NOTIONAL_USDT` / `HEDGE_TIER_LOW/HIGH` let ops recalibrate live without a
+  recompile. The inventory gate is **adaptive by default** (`HEDGE_GATE_MODE`):
+  gate = p60 of the last hour's notional exposure, floored at
+  `HEDGE_NOTIONAL_USDT`, 5-min warmup, 0.6× hysteresis — so it keeps
+  discriminating as flow/BTC level drift; the effective gate also drives the
+  sim risk-tier staircase. Manual $ entry on the 5m page = fixed-mode override;
+  `auto p60` button returns to adaptive.
+- **Expiry gamma-wall fix** (binaries are short-gamma; perps can't hedge γ):
+  pin-risk spread widening (`quote.gammaWiden`) + final-30s reduce-only lockout
+  (`expiryLockoutTicks`) on the engine. A/B (64 windows, k=12): break-even rate
+  78%→95%, worst −$74→−$56, variance −36%. 5m page shows a lockout banner. QA §F.
+- **Break-even acceptance harness** (`src/sim/breakeven.ts`): 64 5-min windows,
+  decomposes spread vs subsidy+adverse-selection vs hedge cost; set the k=12
+  default. See hedging-validation-and-qa.md §E.
 
 ## How to run
 ```bash
@@ -86,7 +121,10 @@ Keys ONLY in `server/.env` (gitignored). Demo futures wallet ~5k USDT (faucet).
   it was a label for the engine mechanism, not the project.) Only Book C is
   deployable (A/B use true σ you lack live).
 - Break-even: spread/vig must out-earn the LMSR subsidy (`b·ln2`/market) +
-  adverse selection. Default tuned (b110, Stoikov k25) is profitable in sim.
+  adverse selection. Default tuned **b110, Stoikov k=12** (was k=25, which failed
+  the 3-market 5m break-even); k=12 → +$71/window (95%) WITH the gamma-wall fix
+  (§F: pin-risk widening + expiry lockout). Acceptance harness:
+  `src/sim/breakeven.ts`; see hedging-validation-and-qa.md §E/§F.
 - Demo/paper only; production hosts blocked in `server/src/config.ts`.
 
 ## NEXT STEPS (the plan to resume)
@@ -113,6 +151,12 @@ stressed across BTC outcomes on real Binance data: **delta/combined remove
 variance is adverse selection (unhedgeable). Live combined hedge verified placing
 real demo orders (then flattened; back to DRY_RUN). Run:
 `src/sim/experiment.ts`.
+
+## QA guide — [qa-risks.md](qa-risks.md)
+Expected behaviors (lockout gray-out, gated hedge idling, feed-freeze, ties pay
+YES), honesty notes (paper book / real demo hedge), real risks (noise-flow
+dependency is the one failing scenario), and the acceptance commands
+(breakeven / validate / stress / experiment harnesses).
 
 ## QA / hedging-effectiveness — [hedging-validation-and-qa.md](hedging-validation-and-qa.md)
 5m-market QA checklist + how to actually prove the hedge works: A/B (hedged vs

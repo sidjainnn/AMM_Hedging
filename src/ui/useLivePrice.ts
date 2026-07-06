@@ -8,6 +8,11 @@ const BACKEND = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhos
 
 export function useLivePrice(active: boolean) {
   const priceRef = useRef<number | null>(null);
+  // ref mirror of `source` so the sim's tick loop (setInterval closure) can
+  // check liveness without re-subscribing. 'offline' covers both backend-down
+  // AND backend-reports-Binance-stale — either way the sim must freeze so
+  // markets can't settle on a frozen price.
+  const sourceRef = useRef<'connecting' | 'live' | 'offline'>('connecting');
   const [price, setPrice] = useState<number | null>(null);
   const [source, setSource] = useState<'connecting' | 'live' | 'offline'>('connecting');
 
@@ -15,18 +20,25 @@ export function useLivePrice(active: boolean) {
     if (!active) return;
     let stopped = false;
 
+    const set = (s: 'connecting' | 'live' | 'offline') => {
+      sourceRef.current = s;
+      setSource(s);
+    };
     const poll = async () => {
       try {
         const r = await fetch(`${BACKEND}/api/price`);
         if (!r.ok) throw new Error('bad status');
         const d = await r.json();
-        if (d.price > 0 && !stopped) {
+        if (stopped) return;
+        if (d.stale) {
+          set('offline'); // backend up but its Binance feed is stale — freeze
+        } else if (d.price > 0) {
           priceRef.current = d.price;
           setPrice(d.price);
-          setSource('live');
+          set('live');
         }
       } catch {
-        if (!stopped) setSource('offline');
+        if (!stopped) set('offline');
       }
     };
 
@@ -38,5 +50,5 @@ export function useLivePrice(active: boolean) {
     };
   }, [active]);
 
-  return { price, priceRef, source };
+  return { price, priceRef, source, sourceRef };
 }

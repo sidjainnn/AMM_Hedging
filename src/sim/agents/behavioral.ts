@@ -233,8 +233,11 @@ export class BehavioralAgents implements AgentEngine {
       const affordable = Math.floor((t.balance / Math.max(price, 1e-4)) * 100) / 100;
       size = Math.min(size, affordable);
       if (size < 0.4) return; // can't afford to act
-      // book the EXACT cash the engine charged (reconciles with the MM book)
+      // book the EXACT cash the engine charged (reconciles with the MM book).
+      // Omit lockoutTicks so the per-tenor value (m.lockoutTicks: 60 for the 5m,
+      // 30 for others) governs — passing ctx.lockoutTicks would override it.
       const cost = m.executeEngineBuy(side, size, t.archetype, ctx.tick);
+      if (cost <= 0) return; // rejected (reduce-only lockout) — no fill, no book
       t.balance -= cost;
       const pos = t.positions[m.id] ?? { yes: 0, no: 0, cost: 0 };
       if (side === 'YES') pos.yes += size;
@@ -290,7 +293,7 @@ export class BehavioralAgents implements AgentEngine {
   // reward — good traders' balances grow, bad ones bleed toward broke.
   onSettled(markets: Market[], spot: number): void {
     for (const m of markets) {
-      const outcomeYes = spot > m.strike;
+      const outcomeYes = spot >= m.strike; // ≥ = displayed contract (ties pay YES)
       for (const t of this.pop) {
         const pos = t.positions[m.id];
         if (!pos) continue;

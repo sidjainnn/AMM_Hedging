@@ -8,16 +8,24 @@ import type { AgentModel } from '../sim/agents';
 import { fmt, usd, usd2, cls, ticksToClock } from './format';
 import { Seg, Slider } from './widgets';
 import { useHedgeControl } from './useHedgeControl';
+import { defaultConfig } from '../sim/config';
 
 const TENOR = '5m';
 
 interface UserPos { marketId: string; yes: number; no: number; cost: number; }
 
 // ---- Hedge Risk Lab: live perp overlays on the same agent flow ----
+// 5m reduce-only window (60s) — matches the per-tenor lockout the engine enforces.
+const LOCKOUT_TICKS = defaultConfig.expiryLockoutTicks5m;
 const LAB_BUDGET = 10000;       // full-budget notional cap
 const LAB_FEE_BPS = 2;          // per-side hedge fee (so the cost shows)
-type LabStrat = 'none' | 'delta' | 'sentiment' | 'combined';
-const LAB_STRATS: LabStrat[] = ['none', 'delta', 'sentiment', 'combined'];
+// vol gate (mirror of server/src/config.ts defaults) — 'gated' only hedges when
+// realized per-tick vol breaches the threshold; flat (like 'none') when calm.
+const LAB_VOL_WINDOW = 60;
+const LAB_VOL_THRESHOLD = 0.0005;
+const LAB_VOL_HYST = 0.6;
+type LabStrat = 'none' | 'delta' | 'sentiment' | 'combined' | 'gated';
+const LAB_STRATS: LabStrat[] = ['none', 'delta', 'sentiment', 'combined', 'gated'];
 interface OBook { pos: number; avg: number; realized: number; fees: number; }
 const newBook = (): OBook => ({ pos: 0, avg: 0, realized: 0, fees: 0 });
 function obReconcile(b: OBook, target: number, spot: number) {
@@ -45,13 +53,22 @@ function stdevInc(a: number[]): number {
   return Math.sqrt(d.reduce((x, y) => x + (y - m) ** 2, 0) / d.length);
 }
 function maxDD(a: number[]): number { let p = -Infinity, dd = 0; for (const v of a) { p = Math.max(p, v); dd = Math.max(dd, p - v); } return dd; }
-const LAB_COLOR: Record<LabStrat, string> = { none: 'var(--muted)', delta: 'var(--bookA)', sentiment: 'var(--bookC)', combined: 'var(--green)' };
+const LAB_COLOR: Record<LabStrat, string> = { none: 'var(--muted)', delta: 'var(--bookA)', sentiment: 'var(--bookC)', combined: 'var(--green)', gated: 'var(--accent)' };
 
 export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: SimState; refresh: () => void; }) {
   const mkt = state.markets.find((m) => m.tenorLabel === TENOR) ?? null;
 
   const hedgeCtl = useHedgeControl();
+  const [gateEdit, setGateEdit] = useState<{ notional?: string; vol?: string }>({});
   const [size, setSize] = useState(10);
+  // Per-window settlement card: baselines captured at each market's open, diffed
+  // when it rolls. Vig/inventory come from the sim book (this market); hedging/
+  // fees come from the real demo account (backend).
+  const winBaseRef = useRef<{ vig: number; inv: number; equity: number | null; fees: number } | null>(null);
+  const [settleCard, setSettleCard] = useState<null | {
+    strike: number; outcomeYes: boolean; vig: number; invPnl: number;
+    hedgeGross: number | null; fees: number; net: number;
+  }>(null);
   const [pos, setPos] = useState<UserPos>({ marketId: '', yes: 0, no: 0, cost: 0 });
   const [realized, setRealized] = useState(0);
   const [wallet, setWallet] = useState(1000); // finite cash; resolves credit back on settlement
@@ -64,9 +81,16 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
   const prevTickRef = useRef(0);
 
   // Hedge Risk Lab: 4 perp overlays on the same flow + their net equity curves
-  const labBooks = useRef<Record<LabStrat, OBook>>({ none: newBook(), delta: newBook(), sentiment: newBook(), combined: newBook() });
-  const labSeries = useRef<{ t: number; none: number; delta: number; sentiment: number; combined: number }[]>([]);
+  const newBooks = (): Record<LabStrat, OBook> =>
+    ({ none: newBook(), delta: newBook(), sentiment: newBook(), combined: newBook(), gated: newBook() });
+  const labBooks = useRef<Record<LabStrat, OBook>>(newBooks());
+  const labSeries = useRef<Array<{ t: number } & Record<LabStrat, number>>>([]);
   const labTickRef = useRef(-1);
+  // vol gate state for the 'gated' overlay
+  const labReturns = useRef<number[]>([]);
+  const labPrevSpot = useRef(0);
+  const labGateOn = useRef(false);
+  const [labVol, setLabVol] = useState(0);
 
   // topbar Reset rewinds the sim (tick → 0): flatten the user's holdings too so
   // both parties start from no positions; also reset the lab overlays.
@@ -77,8 +101,14 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
       setRealized(0);
       histRef.current = [];
       prevRef.current = null;
-      labBooks.current = { none: newBook(), delta: newBook(), sentiment: newBook(), combined: newBook() };
+      labBooks.current = newBooks();
       labSeries.current = [];
+      labReturns.current = [];
+      labPrevSpot.current = 0;
+      labGateOn.current = false;
+      setLabVol(0);
+      winBaseRef.current = null;
+      setSettleCard(null);
     }
     prevTickRef.current = state.tick;
   }, [state.tick]);
@@ -93,11 +123,30 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
     const delta = state.aggregateDelta;
     const lean = state.sentiment?.lean ?? 0;
     const cap = LAB_BUDGET / spot;
+
+    // realized-vol gate for the 'gated' overlay (same logic as the live runner)
+    if (labPrevSpot.current > 0 && spot > 0) {
+      labReturns.current.push(spot / labPrevSpot.current - 1);
+      if (labReturns.current.length > LAB_VOL_WINDOW) labReturns.current.shift();
+    }
+    labPrevSpot.current = spot;
+    let vol = labVol;
+    if (labReturns.current.length >= 5) {
+      const r = labReturns.current;
+      const mean = r.reduce((a, b) => a + b, 0) / r.length;
+      vol = Math.sqrt(r.reduce((a, b) => a + (b - mean) ** 2, 0) / r.length);
+      setLabVol(vol);
+    }
+    if (!labGateOn.current && vol >= LAB_VOL_THRESHOLD) labGateOn.current = true;
+    else if (labGateOn.current && vol < LAB_VOL_THRESHOLD * LAB_VOL_HYST) labGateOn.current = false;
+
+    const combinedTarget = labClamp(delta + 0.5 * cap * lean, cap);
     const targets: Record<LabStrat, number> = {
       none: 0,
       delta: labClamp(delta, cap),
       sentiment: labClamp(lean * cap, cap),
-      combined: labClamp(delta + 0.5 * cap * lean, cap),
+      combined: combinedTarget,
+      gated: labGateOn.current ? combinedTarget : 0,
     };
     const row: any = { t: state.tick };
     for (const st of LAB_STRATS) {
@@ -111,19 +160,39 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
   useEffect(() => {
     if (!mkt) return;
     const prev = prevRef.current;
+    // current cumulative figures: vig+inventory from the sim book (common across
+    // A/B/C), equity+fees from the real demo account.
+    const bk0 = state.books[0];
+    const cumVig = bk0?.spreadCapture ?? 0;
+    const cumInv = bk0?.inventoryPnl ?? 0;
+    const eqNow = hedgeCtl.status?.equity ?? null;
+    const feesNow = hedgeCtl.status?.feesPaid ?? 0;
     // detect a roll: market id changed -> settle the old position, reset chart
     if (prev && prev.id !== mkt.id) {
       if (pos.marketId === prev.id && (pos.yes > 0 || pos.no > 0)) {
-        const outcomeYes = state.btc > prev.strike;
+        const outcomeYes = state.btc >= prev.strike; // ≥ = displayed contract
         const payout = outcomeYes ? pos.yes : pos.no; // $1 per winning share
         setWallet((w) => w + payout); // settlement credits cash back
         setRealized((r) => r + (payout - pos.cost));
       }
+      // build the per-window P&L card from the baseline captured at open
+      const b = winBaseRef.current;
+      if (b) {
+        const vig = cumVig - b.vig;
+        const invPnl = cumInv - b.inv;
+        const fees = feesNow - b.fees;
+        const hedgeNet = eqNow != null && b.equity != null ? eqNow - b.equity : null;
+        const hedgeGross = hedgeNet != null ? hedgeNet + fees : null; // add fees back
+        const net = vig + invPnl + (hedgeNet ?? 0);
+        setSettleCard({ strike: prev.strike, outcomeYes: state.btc >= prev.strike, vig, invPnl, hedgeGross, fees, net });
+      }
+      winBaseRef.current = { vig: cumVig, inv: cumInv, equity: eqNow, fees: feesNow };
       setPos({ marketId: mkt.id, yes: 0, no: 0, cost: 0 });
       histRef.current = [];
     } else if (pos.marketId === '') {
       setPos({ marketId: mkt.id, yes: 0, no: 0, cost: 0 });
     }
+    if (!winBaseRef.current) winBaseRef.current = { vig: cumVig, inv: cumInv, equity: eqNow, fees: feesNow };
     prevRef.current = { id: mkt.id, strike: mkt.strike };
 
     const h = histRef.current;
@@ -151,6 +220,7 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
     const qty = Math.min(size, Math.floor((wallet / price) * 100) / 100);
     if (qty < 0.01) return; // can't afford
     const cost = sim.userTrade(mkt.id, side, qty); // exact engine charge
+    if (cost <= 0) { refresh(); return; } // rejected (expiry reduce-only lockout)
     setWallet((w) => w - cost);
     setPos((p) => ({
       marketId: mkt.id,
@@ -171,6 +241,41 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
 
   return (
     <div className="col">
+      {/* per-window settlement P&L card (modal) */}
+      {settleCard && (() => {
+        const c = settleCard;
+        const row = (label: string, val: number | null, hint: string) => (
+          <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: '1px solid var(--border)' }}>
+            <div><div>{label}</div><div className="hint">{hint}</div></div>
+            <div className={'val ' + (val == null ? 'mut' : cls(val))} style={{ fontVariantNumeric: 'tabular-nums' }}>
+              {val == null ? '—' : usd2(val)}
+            </div>
+          </div>
+        );
+        return (
+          <div onClick={() => setSettleCard(null)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="panel" onClick={(e) => e.stopPropagation()} style={{ width: 420, maxWidth: '90vw', boxShadow: '0 12px 48px rgba(0,0,0,0.5)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <h3 style={{ margin: 0 }}>5m market settled</h3>
+                <span className={'tag ' + (c.outcomeYes ? 'deploy' : 'sim')}>{c.outcomeYes ? 'YES' : 'NO'} · ${fmt(c.strike, 0)}</span>
+              </div>
+              <div className="hint" style={{ margin: '6px 0 10px' }}>P&amp;L breakdown for the market that just resolved.</div>
+              {row('Vig (spread captured)', c.vig, 'the fee earned on flow — revenue')}
+              {row('Inventory P&L', c.invPnl, 'payouts to correct traders (− = house paid out)')}
+              {row('Hedging (Binance position)', c.hedgeGross, 'perp P&L over the window (real demo)')}
+              {row('Fees (to Binance)', c.fees === 0 ? 0 : -c.fees, 'taker fees on hedge buys/sells')}
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 2px', fontWeight: 600 }}>
+                <div>Net market P&amp;L</div>
+                <div className={'val ' + cls(c.net)} style={{ fontVariantNumeric: 'tabular-nums' }}>{usd2(c.net)}</div>
+              </div>
+              <div className="hint" style={{ marginTop: 8 }}>Vig/Inventory = this market (sim). Hedging/Fees = live demo account over the window.</div>
+              <button className="btn primary" style={{ marginTop: 12, width: '100%' }} onClick={() => setSettleCard(null)}>Close</button>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* header */}
       <div className="panel">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
@@ -199,9 +304,18 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
           <div className="panel" style={{ borderLeft: `3px solid ${on ? 'var(--green)' : 'var(--border)'}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
               <div>
-                <h3 style={{ margin: 0 }}>
+                <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   Binance hedge (demo)
-                  <span className="hint"> · {hedgeCtl.connected ? `${h?.hedgeMode ?? ''} mode` : 'backend offline'}</span>
+                  <span className="hint">· {hedgeCtl.connected ? `${h?.hedgeMode ?? ''} mode` : 'backend offline'}</span>
+                  {h && hedgeCtl.connected && (
+                    <label className="hint" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      · leverage
+                      <select value={h.leverage} onChange={(e) => hedgeCtl.setLeverage(Number(e.target.value))}
+                        style={{ background: 'var(--panel)', color: 'var(--text)', border: '1px solid var(--border)', borderRadius: 4, padding: '1px 4px' }}>
+                        {[1, 2, 3, 5, 10, 20].map((x) => <option key={x} value={x}>{x}x</option>)}
+                      </select>
+                    </label>
+                  )}
                 </h3>
                 <div className="hint" style={{ marginTop: 4 }}>
                   {!hedgeCtl.connected ? 'start the server (cd server && npm start)'
@@ -213,6 +327,47 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
                   )}
                   {h?.hedgeError && <span className="neg"> · {h.hedgeError.slice(0, 60)}</span>}
                 </div>
+                {h && hedgeCtl.connected && (
+                  <div className="hint" style={{ marginTop: 4 }}>
+                    vol {(h.realizedVol * 100).toFixed(3)}%/{(h.volThreshold * 100).toFixed(3)}% ·
+                    {' '}inv ${fmt(h.notionalUsdt ?? 0, 0)}/${fmt(h.notionalGate ?? 0, 0)} ·{' '}
+                    {h.idleReason === 'armed'
+                      ? <span className="pos">▲ ARMED — both gates open, hedging active</span>
+                      : h.idleReason === 'idle-vol'
+                        ? <span style={{ color: 'var(--muted)' }}>idle · vol below threshold (calm)</span>
+                        : h.idleReason === 'idle-inv'
+                          ? <span style={{ color: 'var(--muted)' }}>idle · inventory below gate (little at risk)</span>
+                          : h.idleReason === 'disabled'
+                            ? <span style={{ color: 'var(--muted)' }}>off</span>
+                            : <span style={{ color: 'var(--muted)' }}>warming up…</span>}
+                  </div>
+                )}
+                {h && hedgeCtl.connected && h.hasKeys && (
+                  <div className="hint" style={{ marginTop: 6, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span>tune gates →</span>
+                    <label>inv gate $
+                      <input type="number" min={0} step={10} style={{ width: 64, marginLeft: 4 }}
+                        value={gateEdit.notional ?? String(Math.round(h.notionalGate))}
+                        onChange={(e) => setGateEdit((g) => ({ ...g, notional: e.target.value }))}
+                        onBlur={() => { if (gateEdit.notional != null) { hedgeCtl.setGates({ notionalUsdt: parseFloat(gateEdit.notional) }); setGateEdit((g) => ({ ...g, notional: undefined })); } }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+                    </label>
+                    <button className="btn" style={{ padding: '1px 8px', fontSize: 11, opacity: h.gateMode === 'adaptive' ? 1 : 0.55 }}
+                      title="adaptive: gate self-calibrates to a percentile of the last hour's exposure (typing a $ switches to fixed)"
+                      onClick={() => hedgeCtl.setGates({ mode: h.gateMode === 'adaptive' ? 'fixed' : 'adaptive' })}>
+                      {h.gateMode === 'adaptive' ? `auto p${Math.round((h.gatePctl ?? 0.6) * 100)}` : 'fixed → auto?'}
+                    </button>
+                    <span className="mut">(live ${fmt(h.notionalUsdt, 0)})</span>
+                    <label>vol thr
+                      <input type="number" min={0} step={0.00005} style={{ width: 84, marginLeft: 4 }}
+                        value={gateEdit.vol ?? String(h.volThreshold)}
+                        onChange={(e) => setGateEdit((g) => ({ ...g, vol: e.target.value }))}
+                        onBlur={() => { if (gateEdit.vol != null) { hedgeCtl.setGates({ volThreshold: parseFloat(gateEdit.vol) }); setGateEdit((g) => ({ ...g, vol: undefined })); } }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }} />
+                    </label>
+                    <span className="mut">(live {h.realizedVol.toFixed(5)})</span>
+                  </div>
+                )}
               </div>
               <button
                 className={'btn ' + (on ? 'danger' : 'primary')}
@@ -333,16 +488,36 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
             <label><span>size (shares)</span><b>{size}</b></label>
             <input type="range" min={1} max={200} step={1} value={size} onChange={(e) => setSize(parseInt(e.target.value))} />
           </div>
-          <div className="row" style={{ gap: 8 }}>
-            <button className="btn primary" disabled={wallet < yesCost && wallet < mkt.ask}
-              style={{ flex: 1, background: 'var(--green)', borderColor: 'var(--green)', opacity: wallet < mkt.ask ? 0.4 : 1 }} onClick={() => buy('YES')}>
-              Buy YES · {usd2(yesCost)}
-            </button>
-            <button className="btn primary" disabled={wallet < noCost && wallet < (1 - mkt.bid)}
-              style={{ flex: 1, background: 'var(--red)', borderColor: 'var(--red)', opacity: wallet < (1 - mkt.bid) ? 0.4 : 1 }} onClick={() => buy('NO')}>
-              Buy NO · {usd2(noCost)}
-            </button>
-          </div>
+          {mkt.tauTicks > 0 && mkt.tauTicks <= LOCKOUT_TICKS && (
+            <div className="hint" style={{ margin: '0 0 8px', color: 'var(--accent)' }}>
+              ⏳ resolution lockout (last {LOCKOUT_TICKS}s) — reduce-only; trades that add inventory at the gamma wall are rejected.
+            </div>
+          )}
+          {(() => {
+            // reduce-only near expiry: the engine rejects trades that GROW the
+            // house's one-sided inventory. Buying YES grows netSkew when it's
+            // ≥0; buying NO grows it when ≤0. Gray out the blocked side (Polymarket-
+            // style) so the user isn't surprised by a silent rejection.
+            const inLockout = mkt.tauTicks > 0 && mkt.tauTicks <= LOCKOUT_TICKS;
+            const yesBlocked = inLockout && mkt.netSkew >= 0;
+            const noBlocked = inLockout && mkt.netSkew <= 0;
+            const yesDisabled = yesBlocked || (wallet < yesCost && wallet < mkt.ask);
+            const noDisabled = noBlocked || (wallet < noCost && wallet < (1 - mkt.bid));
+            return (
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn primary" disabled={yesDisabled}
+                  title={yesBlocked ? 'Reduce-only near expiry — YES adds inventory, blocked' : ''}
+                  style={{ flex: 1, background: 'var(--green)', borderColor: 'var(--green)', opacity: yesDisabled ? 0.4 : 1 }} onClick={() => buy('YES')}>
+                  {yesBlocked ? '🔒 YES locked' : `Buy YES · ${usd2(yesCost)}`}
+                </button>
+                <button className="btn primary" disabled={noDisabled}
+                  title={noBlocked ? 'Reduce-only near expiry — NO adds inventory, blocked' : ''}
+                  style={{ flex: 1, background: 'var(--red)', borderColor: 'var(--red)', opacity: noDisabled ? 0.4 : 1 }} onClick={() => buy('NO')}>
+                  {noBlocked ? '🔒 NO locked' : `Buy NO · ${usd2(noCost)}`}
+                </button>
+              </div>
+            );
+          })()}
           <div style={{ marginTop: 14 }}>
             <div className="kv"><span>💰 wallet (cash)</span><span style={{ color: 'var(--text)', fontWeight: 600 }}>{usd2(wallet)}</span></div>
             <div className="kv"><span>position value</span><span>{usd2(posValue)}</span></div>
@@ -426,14 +601,12 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
           const arr = S.map((r) => r[st]);
           return { net: arr[arr.length - 1], vol: stdevInc(arr), dd: maxDD(arr) };
         };
-        const m: Record<LabStrat, ReturnType<typeof metric>> = {
-          none: metric('none'), delta: metric('delta'), sentiment: metric('sentiment'), combined: metric('combined'),
-        };
+        const m = Object.fromEntries(LAB_STRATS.map((st) => [st, metric(st)])) as Record<LabStrat, ReturnType<typeof metric>>;
         const baseDD = m.none.dd || 1e-9;
         const baseVol = m.none.vol || 1e-9;
         return (
           <div className="panel">
-            <h3>Hedge risk lab <span className="hint">· same agent flow, four perp overlays sized to ${LAB_BUDGET} · does hedging cut risk?</span></h3>
+            <h3>Hedge risk lab <span className="hint">· same agent flow, five perp overlays sized to ${LAB_BUDGET} · vol {(labVol * 100).toFixed(3)}% (gate {(LAB_VOL_THRESHOLD * 100).toFixed(3)}%, {labGateOn.current ? 'ARMED' : 'idle'}) · does hedging cut risk?</span></h3>
             <div className="row" style={{ gap: 16 }}>
               <div style={{ flex: 1, minWidth: 320 }}>
                 <table>
@@ -453,7 +626,7 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
                   </tbody>
                 </table>
                 <p className="hint" style={{ marginTop: 6 }}>
-                  Positive "vs unhedged" = lower risk than no hedge. The hedge is a cost in calm markets and pays off when BTC moves; watch the gap grow during volatility.
+                  Positive "vs unhedged" = lower risk than no hedge. Always-on hedges (delta/sentiment/combined) bleed fees in calm markets; <b>gated</b> only hedges when realized vol breaches the threshold — so it tracks unhedged when calm and captures the protection when BTC moves. That's the regime where hedging beats not hedging.
                 </p>
               </div>
               <div style={{ flex: 1, minWidth: 320 }}>

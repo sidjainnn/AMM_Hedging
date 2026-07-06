@@ -21,10 +21,22 @@ export const defaultConfig: SimConfig = {
     sigma: 0.05,
     // k sets the adverse-selection half-spread (~2/k). With one ATM market per
     // tenor, k=25 did NOT break even (spread ≈ inventory subsidy + hedge cost);
-    // k=12 clears it with margin (~+$51/5m-window, 78% of windows ≥0 in QA).
+    // k=12 clears it with margin (~+$71/5m-window, 95% of windows ≥0 in QA).
     // Lower k = wider spread = more margin but less competitive. See
     // src/sim/breakeven.ts and docs/hedging-validation-and-qa.md.
     k: 12,
+    // charge for the unhedgeable digital gamma: widen the spread into expiry
+    // near the strike (peaks ATM). Tuned with src/sim/breakeven.ts.
+    gammaWiden: 0.03,
+    // Inventory-proportional widening: half-spread scales with |netSkew|/b.
+    // 0 at flat inventory (keeps quotes competitive — flow keeps flowing);
+    // grows as the house accumulates one-sided inventory, paying users to
+    // close the gap before it gets risky. 0.015 = ~1.5¢ extra half-spread per
+    // unit of (qY-qN)/b.
+    invWiden: 0.015,
+    // 5m market gets a 50% bigger invWiden multiplier (its gamma wall is the
+    // sharpest of the three tenors). The 5m is the optimisation target.
+    invWiden5mBoost: 1.5,
   },
   btcStart: 68000,
   btcVolPerTick: 0.0011, // TRUE sigma per tick
@@ -52,4 +64,16 @@ export const defaultConfig: SimConfig = {
   kFlat: 0.02,
   feeBps: 2,
   fundingRate8h: 0.01,
+  // last 30s of each market (1 tick = 1s): reduce-only, no new toxic inventory
+  // at the gamma wall. Pairs with quote.gammaWiden to keep the MM at break-even.
+  expiryLockoutTicks: 30,
+  // 5m market gets 60s (its gamma wall is the sharpest of the three tenors).
+  expiryLockoutTicks5m: 60,
+  // Risk-tier hedge dial: below this notional exposure (|aggregate δ|×spot, USDT)
+  // the hedge is gated off for Books A/C — no fee churn in flat regimes. Above
+  // it, h ramps through (tierLow, tierHigh, 1.0) as exposure grows. Saves
+  // round-trip fees in calm windows; preserves tail protection in risky ones.
+  hedgeNotionalUsdt: 200,
+  riskTierLow: 0.3,
+  riskTierHigh: 0.7,
 };

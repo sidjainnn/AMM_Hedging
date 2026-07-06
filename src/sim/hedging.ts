@@ -22,7 +22,7 @@ import type {
 interface Book {
   id: HedgeBookId;
   label: string;
-  h: number; // hedge dial
+  h: number; // user-set dial (Book B = ride-bias, Books A/C = ignored — risk tier overrides)
   sigmaSource: 'true' | 'est';
   positionUnits: number;
   avgEntry: number;
@@ -32,6 +32,19 @@ interface Book {
   target: number;
 }
 
+// Risk-tier function: returns the effective hedge dial h for Books A/C given
+// the current notional exposure (|aggregate δ| × spot, USDT). Below the
+// notional gate → 0 (no hedge, no fee churn). In the mid-tier → tierLow. In
+// the high-tier → tierHigh. Above the upper threshold → 1.0 (fully hedged).
+// The thresholds are (1x, 4x) the gate by default — chosen so a 200 USDT gate
+// produces a 0/0.3/0.7/1.0 staircase as notional rises through 0/200/800/∞.
+function riskTierH(notionalUsdt: number, gate: number, low: number, high: number): number {
+  if (notionalUsdt < gate) return 0;
+  if (notionalUsdt < gate * 4) return low;
+  if (notionalUsdt < gate * 16) return high;
+  return 1.0;
+}
+
 export class HedgeEngine {
   private books: Book[];
   // common market-making P&L, shared by all books
@@ -39,13 +52,24 @@ export class HedgeEngine {
   accRealizedSpread = 0; // settled markets' captured spread
   log: HedgeActivity[] = [];
   tauStar = 0;
+  // notional gate (USDT): below this, Books A/C are flat (h=0). Above it,
+  // h scales with exposure through the tier function.
+  private hedgeNotionalUsdt: number;
+  private riskTierLow: number;
+  private riskTierHigh: number;
 
   constructor(
     hDialB: number,
     private kFlat: number,
     private feeBps: number,
-    private fundingPerTick: number
+    private fundingPerTick: number,
+    hedgeNotionalUsdt: number = 200,
+    riskTierLow: number = 0.3,
+    riskTierHigh: number = 0.7
   ) {
+    this.hedgeNotionalUsdt = hedgeNotionalUsdt;
+    this.riskTierLow = riskTierLow;
+    this.riskTierHigh = riskTierHigh;
     this.books = [
       this.mk('A', 'A · pure hedge (true δ)', 1, 'true'),
       this.mk('B', 'B · ride bias (true δ)', hDialB, 'true'),
@@ -85,6 +109,13 @@ export class HedgeEngine {
   }
   setFundingPerTick(f: number): void {
     this.fundingPerTick = f;
+  }
+  setHedgeNotionalUsdt(u: number): void {
+    this.hedgeNotionalUsdt = u;
+  }
+  setRiskTier(low: number, high: number): void {
+    this.riskTierLow = low;
+    this.riskTierHigh = high;
   }
 
   // Aggregate delta (units of BTC) using a given sigma; flattens near-expiry.
@@ -144,22 +175,46 @@ export class HedgeEngine {
   }
 
   // one hedge tick: rebalance every book toward its target, accrue costs.
+  // Returns aggregate state plus a per-book idleReason for the UI. Books A and
+  // C use a risk-tier h (0 below the notional gate, then tierLow / tierHigh /
+  // 1.0) so fee churn in flat regimes is zero. Book B keeps the user-set h.
   tick(
     markets: Market[],
     spot: number,
     trueSigma: number,
     estSigma: number,
     simTick: number
-  ): { aggregateDelta: number; books: HedgeBookState[]; tauStar: number } {
+  ): {
+    aggregateDelta: number;
+    notionalUsdt: number;
+    idleReason: import('./types').HedgeIdleReason;
+    books: HedgeBookState[];
+    tauStar: number;
+  } {
     this.tauStar =
       estSigma > 0 ? (this.kFlat / estSigma) ** 2 : 0;
     const common = this.commonPnl(markets);
 
+    // 1. compute the headline aggregate δ using true σ (the reference).
+    const aggTrue = this.aggregateDelta(markets, spot, trueSigma, simTick);
+    const notionalUsdt = Math.abs(aggTrue) * spot;
+    const riskH = riskTierH(notionalUsdt, this.hedgeNotionalUsdt, this.riskTierLow, this.riskTierHigh);
+    // idleReason describes why the *runner* is or isn't firing this tick. The
+    // sim doesn't actually skip trades for the books (they still rebalance to
+    // their target every tick), but the runner consumes `idleReason` to decide
+    // whether to place a real order on Binance. 'untracked' only shows up
+    // before the sim has ticked at least once.
+    const idleReason: import('./types').HedgeIdleReason =
+      riskH === 0 ? 'idle-inv' : 'armed';
+
     const states: HedgeBookState[] = [];
     for (const bk of this.books) {
+      // Books A and C: risk-tier h (replaces the static h=1).
+      // Book B: user-set dial (the ride-bias research knob).
+      const effectiveH = bk.id === 'B' ? bk.h : riskH;
       const sigma = bk.sigmaSource === 'true' ? trueSigma : estSigma;
       const raw = this.aggregateDelta(markets, spot, sigma, simTick);
-      bk.target = bk.h * raw;
+      bk.target = effectiveH * raw;
 
       const trade = bk.target - bk.positionUnits;
       if (Math.abs(trade) > 1e-6) {
@@ -215,10 +270,17 @@ export class HedgeEngine {
         inventoryPnl: common.inventory,
         hedgePnl,
         fundingAccrued: bk.funding,
+        effectiveH,
       });
     }
 
     const aggDelta = this.aggregateDelta(markets, spot, trueSigma, simTick);
-    return { aggregateDelta: aggDelta, books: states, tauStar: this.tauStar };
+    return {
+      aggregateDelta: aggDelta,
+      notionalUsdt,
+      idleReason,
+      books: states,
+      tauStar: this.tauStar,
+    };
   }
 }

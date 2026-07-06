@@ -25,6 +25,7 @@ export interface LiveInfo {
   hedgeMode: 'delta' | 'sentiment' | 'combined';
   livePosition: number;
   maxPositionBtc: number;
+  maxNotionalUsdt: number;
 
   hedgeError: string | null;
 

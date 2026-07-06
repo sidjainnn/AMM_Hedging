@@ -188,10 +188,32 @@ export async function getAccount(): Promise<FuturesAccount> {
   };
 }
 
+// Set leverage for the symbol (1x..125x). We default low (1x) because a hedge
+// wants no leverage — sized to notional, not levered. Errors are surfaced to the
+// caller to log (e.g. can't change with an open position on some venues).
+export async function setLeverage(leverage: number): Promise<void> {
+  if (!config.hasKeys()) return;
+  await signedRequest(config.futuresBase, 'POST', '/fapi/v1/leverage', {
+    symbol: config.symbol,
+    leverage: Math.max(1, Math.round(leverage)),
+  });
+}
+
+// Multi-Assets Mode lets USDC (and other stablecoins) cross-collateralize a
+// USDT-margined position — so the full USDT+USDC balance backs BTCUSDT hedges.
+// Can't be toggled while a position is open; caller logs the error if so.
+export async function setMultiAssetsMargin(on: boolean): Promise<void> {
+  if (!config.hasKeys()) return;
+  await signedRequest(config.futuresBase, 'POST', '/fapi/v1/multiAssetsMargin', {
+    multiAssetsMargin: on ? 'true' : 'false',
+  });
+}
+
 export interface OrderResult {
   dryRun: boolean;
   side: 'BUY' | 'SELL';
   qty: number;
+  avgPrice: number; // actual fill price (0 if dry-run/unknown) — for slippage measurement
   raw?: unknown;
 }
 
@@ -205,21 +227,42 @@ export async function marketOrder(
     parseFloat(roundToStep(qty, f.stepSize).toFixed(f.qtyPrecision))
   );
 
-  if (q < f.minQty) return { dryRun: config.dryRun, side, qty: 0 };
+  if (q < f.minQty) return { dryRun: config.dryRun, side, qty: 0, avgPrice: 0 };
 
-  if (config.dryRun) return { dryRun: true, side, qty: q };
+  if (config.dryRun) return { dryRun: true, side, qty: q, avgPrice: 0 };
 
-  const raw = await signedRequest(config.futuresBase, 'POST', '/fapi/v1/order', {
-    symbol: config.symbol,
-    side,
-    type: 'MARKET',
-    quantity: q,
-  });
+  const raw = await signedRequest<{ avgPrice?: string; orderId?: number }>(
+    config.futuresBase, 'POST', '/fapi/v1/order', {
+      symbol: config.symbol,
+      side,
+      type: 'MARKET',
+      quantity: q,
+      newOrderRespType: 'RESULT',
+    });
+
+  // The demo venue's POST response omits avgPrice/cumQuote, so query the order
+  // back to get the actual fill price — the ledger measures realized slippage
+  // (fill vs mark-at-decision) from it. Best-effort: on failure avgPrice=0 and
+  // that fill's slippage is simply unmeasured rather than wrong.
+  let avgPrice = parseFloat(raw?.avgPrice ?? '0') || 0;
+  if (!avgPrice && raw?.orderId) {
+    try {
+      const q2 = await signedRequest<{ avgPrice?: string; cumQuote?: string; executedQty?: string }>(
+        config.futuresBase, 'GET', '/fapi/v1/order', { symbol: config.symbol, orderId: raw.orderId });
+      avgPrice = parseFloat(q2?.avgPrice ?? '0') || 0;
+      if (!avgPrice) {
+        const cum = parseFloat(q2?.cumQuote ?? '0');
+        const ex = parseFloat(q2?.executedQty ?? '0');
+        if (cum > 0 && ex > 0) avgPrice = cum / ex;
+      }
+    } catch { /* leave 0 — unmeasured */ }
+  }
 
   return {
     dryRun: false,
     side,
     qty: q,
+    avgPrice,
     raw,
   };
 }

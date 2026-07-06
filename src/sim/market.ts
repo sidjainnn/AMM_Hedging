@@ -26,6 +26,10 @@ export class Market {
   spreadCapture = 0; // running half-spread captured
   quote: Quote;
   settled = false;
+  // Per-market reduce-only lockout (set by MarketManager per tenor). When the
+  // market is in the last `lockoutTicks` ticks of its life, executeEngineBuy
+  // rejects trades that grow |netSkew|. 0 = off.
+  lockoutTicks: number = 0;
 
   constructor(
     public id: string,
@@ -50,7 +54,8 @@ export class Market {
       this.engine.qY - this.engine.qN,
       this.engine.effectiveB(),
       this.tau(tick),
-      qp
+      qp,
+      this.tenorLabel
     );
   }
 
@@ -61,9 +66,23 @@ export class Market {
     side: Side,
     shares: number,
     actor: string,
-    tick: number
+    tick: number,
+    lockoutTicks?: number
   ): number {
     if (shares <= 0) return 0;
+    // Final-window lockout: near expiry accept only inventory-REDUCING trades so
+    // the house stops accumulating toxic inventory at the gamma wall. A YES buy
+    // raises netSkew (qY−qN); a NO buy lowers it. Reject if it grows |netSkew|.
+    // Use the explicit param if given, otherwise fall back to the per-market
+    // lockout (set by MarketManager per tenor; the 5m gets a longer window
+    // because its gamma wall is the sharpest).
+    const effectiveLockout = lockoutTicks ?? this.lockoutTicks;
+    const tau = this.tau(tick);
+    if (effectiveLockout > 0 && tau > 0 && tau <= effectiveLockout) {
+      const netSkew = this.engine.qY - this.engine.qN;
+      const newSkew = netSkew + (side === 'YES' ? shares : -shares);
+      if (Math.abs(newSkew) > Math.abs(netSkew)) return 0; // reduce-only: blocked
+    }
     const half = (this.quote.ask - this.quote.bid) / 2;
     const engineCash = this.engine.applyBuy(side, shares);
     const spread = shares * Math.max(half, 0);
@@ -157,12 +176,22 @@ function roundStrike(x: number): number {
 export class MarketManager {
   markets: Market[] = [];
   private seq = 0;
+  // Per-tenor reduce-only lockout in ticks. The 5m gets a longer window
+  // (60s default) because its digital-gamma wall is the sharpest; other
+  // tenors get the default (30s). Set lockoutTicksByTenor to {} for the
+  // legacy "all tenors get default" behaviour.
+  private lockoutTicksByTenor: Record<string, number>;
+  private defaultLockoutTicks: number;
 
   constructor(
     private tenors: { label: string; ticks: number }[],
     private strikePcts: number[],
-    private engineParams: EngineParams
-  ) {}
+    private engineParams: EngineParams,
+    opts?: { defaultLockoutTicks?: number; lockoutTicksByTenor?: Record<string, number> }
+  ) {
+    this.defaultLockoutTicks = opts?.defaultLockoutTicks ?? 0;
+    this.lockoutTicksByTenor = opts?.lockoutTicksByTenor ?? {};
+  }
 
   // (re)seed every tenor's strike ladder around the current spot.
   seedAll(tick: number, spot: number): void {
@@ -180,18 +209,19 @@ export class MarketManager {
     tick: number,
     spot: number
   ): void {
+    const lockout = this.lockoutTicksByTenor[t.label] ?? this.defaultLockoutTicks;
     for (const pct of this.strikePcts) {
       const strike = roundStrike(spot * (1 + pct));
-      this.markets.push(
-        new Market(
-          `${t.label}-${strike}-${this.seq++}`,
-          t.label,
-          strike,
-          tick,
-          tick + t.ticks,
-          this.engineParams
-        )
+      const m = new Market(
+        `${t.label}-${strike}-${this.seq++}`,
+        t.label,
+        strike,
+        tick,
+        tick + t.ticks,
+        this.engineParams
       );
+      m.lockoutTicks = lockout;
+      this.markets.push(m);
     }
   }
 
@@ -199,7 +229,8 @@ export class MarketManager {
   // Returns the settled markets so the caller can accumulate realised P&L.
   roll(tick: number, spot: number): Market[] {
     const expired = this.markets.filter((m) => tick >= m.expiryTick);
-    for (const m of expired) m.settle(spot > m.strike);
+    // ≥ matches the displayed contract ("Will BTC be ≥ strike?") — ties pay YES.
+    for (const m of expired) m.settle(spot >= m.strike);
     if (expired.length) {
       const tenorsToRespawn = new Set(expired.map((m) => m.tenorLabel));
       this.markets = this.markets.filter((m) => tick < m.expiryTick);

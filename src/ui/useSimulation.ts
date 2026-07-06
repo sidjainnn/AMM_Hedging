@@ -22,7 +22,7 @@ export function useSimulation() {
   // Live BTC price (external-price mode). Synthetic GBM is off by default now;
   // the live feed is the single price source of truth.
   const external = !!defaultConfig.externalPrice;
-  const { priceRef, source } = useLivePrice(external);
+  const { priceRef, source, sourceRef } = useLivePrice(external);
   const seededRef = useRef(false);
 
   useEffect(() => {
@@ -41,6 +41,13 @@ export function useSimulation() {
       if (external) {
         const p = priceRef.current;
         if (p == null) return; // wait for the live feed before running
+        // stale-feed guard: freeze market time while the feed is down/stale so
+        // markets can't settle on a frozen price; drop accumulated time so
+        // recovery doesn't fast-forward through the outage.
+        if (sourceRef.current !== 'live') {
+          acc = 0;
+          return;
+        }
         if (!seededRef.current) {
           // seed markets at the first live price, then start
           simRef.current.cfg.btcStart = p;
@@ -62,7 +69,7 @@ export function useSimulation() {
       if (stepped > 0) setState(simRef.current.getState());
     }, 100);
     return () => clearInterval(id);
-  }, [external, priceRef]);
+  }, [external, priceRef, sourceRef]);
 
   const sync = useCallback(() => setState(simRef.current.getState()), []);
 

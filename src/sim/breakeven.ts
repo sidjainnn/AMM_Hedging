@@ -63,6 +63,53 @@ const cur = evaluate({ mode: 'stoikov' });
 console.log(`CURRENT default (Stoikov k=${defaultConfig.quote.k}):`);
 console.log(`  mean net/window $${cur.meanNet.toFixed(1)}  | break-even rate ${(cur.breakEvenRate * 100).toFixed(0)}%  | spread +$${cur.spread.toFixed(1)}  inv $${cur.inv.toFixed(1)}  hedge $${cur.hedge.toFixed(1)}\n`);
 
+// 1b) gamma-wall fix A/B: pin-risk spread widening + expiry reduce-only lockout
+function evalFull(over: Partial<SimConfig>) {
+  const all: { net: number }[] = [];
+  for (const seed of SEEDS) all.push(...run({ ...defaultConfig, externalPrice: false, seed, ...over }));
+  const nets = all.map((w) => w.net);
+  return { meanNet: mean(nets), stdNet: std(nets), worst: Math.min(...nets), breakEvenRate: all.filter((w) => w.net >= 0).length / all.length };
+}
+console.log('Gamma-wall fix A/B (Stoikov k=12):');
+const off = evalFull({ quote: { ...defaultConfig.quote, gammaWiden: 0 }, expiryLockoutTicks: 0 });
+const wid = evalFull({ expiryLockoutTicks: 0 });
+const lck = evalFull({ quote: { ...defaultConfig.quote, gammaWiden: 0 } });
+const both = evalFull({});
+const fmtRow = (name: string, r: ReturnType<typeof evalFull>) =>
+  `  ${name.padEnd(26)} mean $${r.meanNet.toFixed(1).padStart(6)}  | rate ${(r.breakEvenRate * 100).toFixed(0).padStart(3)}%  | worst $${r.worst.toFixed(0).padStart(5)}  | std ${r.stdNet.toFixed(0)}`;
+console.log(fmtRow('off (neither)', off));
+console.log(fmtRow('spread widen only', wid));
+console.log(fmtRow('lockout only', lck));
+console.log(fmtRow('both (default)', both));
+console.log('');
+
+// 1c) 5m-optimization A/B: invWiden + risk-tier hedge + 5m 60s lockout.
+// Baselines: invWiden off (quote.invWiden=0); risk-tier off ⇔ hedgeNotionalUsdt=0
+// (riskTierH then returns 1.0 always = the old static h=1 full hedge); 5m lockout
+// reverts to the 30s default. FULL = the current frozen default.
+console.log('5m-optimization A/B (Stoikov k=12, hedge ON):');
+const Q = defaultConfig.quote;
+const base = evalFull({ quote: { ...Q, invWiden: 0 }, hedgeNotionalUsdt: 0, expiryLockoutTicks5m: 30 });
+const aInv = evalFull({ hedgeNotionalUsdt: 0, expiryLockoutTicks5m: 30 });               // +invWiden
+const aTier = evalFull({ quote: { ...Q, invWiden: 0 }, expiryLockoutTicks5m: 30 });      // +risk-tier
+const aLck = evalFull({ quote: { ...Q, invWiden: 0 }, hedgeNotionalUsdt: 0 });           // +5m 60s lockout
+const aFull = evalFull({});                                                              // all three (default)
+console.log(fmtRow('baseline (pre-opt)', base));
+console.log(fmtRow('+ invWiden', aInv));
+console.log(fmtRow('+ risk-tier hedge', aTier));
+console.log(fmtRow('+ 5m 60s lockout', aLck));
+console.log(fmtRow('FULL optimization', aFull));
+
+// acceptance bar (user: "Robust break-even"): mean≥$50, rate≥90%, worst≥−$80, std≤$80
+const pass = aFull.meanNet >= 50 && aFull.breakEvenRate >= 0.9 && aFull.worst >= -80 && aFull.stdNet <= 80;
+console.log(`  acceptance (mean≥50, rate≥90%, worst≥−80, std≤80): ${pass ? 'PASS ✅' : 'FAIL ❌'}\n`);
+
+// 1d) regime split: same FULL config in calm vs storm (different true BTC vol).
+console.log('Regime split (FULL config, calm vs storm):');
+console.log(fmtRow('calm  (vol 0.0006)', evalFull({ btcVolPerTick: 0.0006 })));
+console.log(fmtRow('storm (vol 0.0020)', evalFull({ btcVolPerTick: 0.0020 })));
+console.log('');
+
 // 2) sweep a fixed (manual) half-spread → the controllable break-even lever
 console.log('Manual half-spread sweep (the guarantee knob):');
 console.log('half-spread   mean net/window   break-even rate   spread / inv / hedge');

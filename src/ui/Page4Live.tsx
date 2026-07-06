@@ -8,8 +8,91 @@ import {
   ReferenceLine,
 } from 'recharts';
 
+import { useEffect, useState } from 'react';
 import { useLiveBackend } from './useLiveBackend';
+import { useHedgeControl } from './useHedgeControl';
 import { fmt, usd, usd2, cls } from './format';
+
+// A/B window ledger table — one row per settled 5m window of the SERVER book
+// (the one the demo account hedges). Data also lives on disk:
+// server/data/ledger.csv (open in Excel) or GET /api/ledger.csv.
+function LedgerPanel({ backend }: { backend: string }) {
+  const [rows, setRows] = useState<Record<string, string | number>[]>([]);
+  const { status: hs, setAB } = useHedgeControl();
+  useEffect(() => {
+    let stop = false;
+    const poll = async () => {
+      try {
+        const r = await fetch(`${backend}/api/ledger?limit=24`);
+        if (r.ok && !stop) setRows((await r.json()).rows ?? []);
+      } catch { /* backend down — keep last */ }
+    };
+    poll();
+    const id = setInterval(poll, 10000);
+    return () => { stop = true; clearInterval(id); };
+  }, [backend]);
+
+  const num = (v: string | number, d = 2) => (typeof v === 'number' ? v.toFixed(d) : '—');
+  return (
+    <div className="panel">
+      <h3 style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        <span>A/B window ledger <span className="hint">· per-5m-window P&amp;L of the hedged (server) book · unhedged = same-window counterfactual</span></span>
+        <a className="hint" href={`${backend}/api/ledger.csv`} download>⬇ download CSV</a>
+      </h3>
+      {hs && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '4px 0 10px', flexWrap: 'wrap' }}>
+          <button
+            className="btn"
+            style={hs.abRunning
+              ? { background: 'var(--red)', borderColor: 'var(--red)' }
+              : { background: 'var(--accent)', borderColor: 'var(--accent)', color: '#fff' }}
+            onClick={() => setAB(!hs.abRunning)}
+          >
+            {hs.abRunning ? '■ Stop A/B run' : '▶ Start A/B run'}
+          </button>
+          <span className="hint">
+            {hs.abRunning
+              ? <>running · window {hs.abPos + 1}/{hs.abBlocksOn + hs.abBlocksOff} of cycle · this block: <b style={{ color: hs.abPos < hs.abBlocksOn ? 'var(--green)' : 'var(--muted)' }}>{hs.abPos < hs.abBlocksOn ? 'HEDGED' : 'unhedged (validation)'}</b>{!hs.dryRun && ' · real demo orders'}</>
+              : <>alternates {hs.abBlocksOn} hedged + {hs.abBlocksOff} unhedged windows automatically at each 5m roll{!hs.dryRun && ' — starting sends REAL demo orders'}</>}
+          </span>
+        </div>
+      )}
+      {rows.length === 0 ? (
+        <p className="hint">No settled windows yet this session — rows appear at each 5m roll. CSV persists across restarts at <b>server/data/ledger.csv</b>.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ fontSize: 12, whiteSpace: 'nowrap' }}>
+            <thead><tr>
+              <th>closed</th><th>strike</th><th>out</th><th>vig $</th><th>inv $</th>
+              <th>unhedged</th><th>hedge $</th><th>hedged</th><th>slip $</th><th>fees $</th>
+              <th>fills</th><th>armed</th><th>vol</th><th>ok?</th>
+            </tr></thead>
+            <tbody>
+              {[...rows].reverse().map((r, i) => (
+                <tr key={i} style={{ opacity: r.excluded ? 0.45 : 1 }}>
+                  <td className="mut">{String(r.ts_close).slice(11, 19)}</td>
+                  <td>{fmt(Number(r.strike), 0)}</td>
+                  <td className={r.outcome === 'YES' ? 'pos' : 'neg'}>{r.outcome}</td>
+                  <td className="pos">{num(r.spread_usd)}</td>
+                  <td className={cls(Number(r.inv_usd))}>{num(r.inv_usd)}</td>
+                  <td className={cls(Number(r.unhedged_net))}><b>{num(r.unhedged_net)}</b></td>
+                  <td className={cls(Number(r.hedge_pnl))}>{num(r.hedge_pnl)}</td>
+                  <td className={cls(Number(r.hedged_net))}><b>{num(r.hedged_net)}</b></td>
+                  <td className="mut">{num(r.slippage_usd, 3)}</td>
+                  <td className="mut">{num(r.fees_est, 3)}</td>
+                  <td className="mut">{String(r.fills)}</td>
+                  <td className="mut">{typeof r.armed_frac === 'number' ? `${Math.round(r.armed_frac * 100)}%` : '—'}</td>
+                  <td className="mut">{typeof r.realized_vol === 'number' ? r.realized_vol.toExponential(1) : '—'}</td>
+                  <td>{r.excluded ? <span className="neg" title="partial window or stale-feed ticks — excluded by rule">✕</span> : <span className="pos">✓</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function Page4Live() {
   const { state, connected, setHedge, setMode, backend } = useLiveBackend(true);
@@ -217,8 +300,8 @@ npm start`}
 
           <div className="cell">
             <div className="lbl">position cap</div>
-            <div className="val">±{fmt(L.maxPositionBtc, 3)}</div>
-            <div className="hint">hard limit</div>
+            <div className="val">±{fmt(L.maxNotionalUsdt / (L.futuresMarkPrice || 1), 3)}</div>
+            <div className="hint">${fmt(L.maxNotionalUsdt, 0)} notional</div>
           </div>
 
           <div className="cell">
@@ -356,6 +439,9 @@ npm start`}
           </div>
         ))}
       </div>
+
+      {/* A/B window ledger — the experiment's raw data, one row per 5m window */}
+      <LedgerPanel backend={backend} />
     </div>
   );
 }

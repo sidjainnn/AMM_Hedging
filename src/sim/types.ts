@@ -20,6 +20,18 @@ export interface QuoteParams {
   gamma: number; // Stoikov risk aversion
   sigma: number; // Stoikov vol input (user slider)
   k: number; // Stoikov order-arrival depth
+  // Gamma/pin-risk spread widening: scales the extra half-spread charged as the
+  // binary nears expiry around the strike (digital gamma is unhedgeable, so the
+  // vig must pay for it). 0 = off (legacy behaviour).
+  gammaWiden: number;
+  // Inventory-proportional widening: adds half-spread that scales with
+  // |netSkew|/b. 0 at flat inventory (preserves competitive liquidity); grows
+  // as the house accumulates one-sided inventory, paying users to close the gap
+  // before the inventory gets risky.
+  invWiden: number;
+  // Extra multiplier applied to invWiden for the 5m market only (its gamma
+  // wall is the sharpest of the three tenors).
+  invWiden5mBoost: number;
 }
 
 // A single binary market: "BTC(t+τ) > K", one strike, one tenor instance.
@@ -77,7 +89,18 @@ export interface HedgeBookState {
   inventoryPnl: number;
   hedgePnl: number;
   fundingAccrued: number;
+  // Effective hedge dial this tick (after risk-tier scaling). For Book B this
+  // mirrors the user-set h; for A/C it's the tier value or the static h=1.
+  effectiveH: number;
 }
+
+// Why the live hedge is NOT firing this tick (string for the UI).
+//   'armed'   — gate met, orders in flight
+//   'idle-inv' — notional exposure below hedgeNotionalUsdt
+//   'idle-vol' — realized vol below the vol gate (gated off)
+//   'disabled' — hedging turned off entirely
+//   'untracked' — placeholder while the sim hasn't ticked yet
+export type HedgeIdleReason = 'armed' | 'idle-inv' | 'idle-vol' | 'disabled' | 'untracked';
 
 export interface HedgeActivity {
   tick: number;
@@ -126,6 +149,17 @@ export interface SimConfig {
   kFlat: number; // σ√τ flatten threshold
   feeBps: number; // hedge trade fee
   fundingRate8h: number; // ±% per 8h
+  // Final-window lockout: in the last N ticks before expiry the engine accepts
+  // only inventory-REDUCING (reduce-only) trades, so the house stops taking
+  // toxic inventory at the gamma wall. 0 = off.
+  expiryLockoutTicks: number; // default for all tenors
+  expiryLockoutTicks5m: number; // override for the 5m market (sharper gamma wall)
+  // Risk-tier hedge dial: replace static h=1 with a tier of (|aggregate δ|×spot).
+  // Below hedgeNotionalUsdt → 0% hedged; above → fully hedged. Saves fee churn in
+  // flat regimes while keeping tail protection.
+  hedgeNotionalUsdt: number; // inventory gate: |aggregate δ|×spot below this → flat
+  riskTierLow: number; // h when notional in [tier1, tier2)  (default 0.3)
+  riskTierHigh: number; // h when notional in [tier2, ∞)     (default 0.7)
 }
 
 export interface SimState {
@@ -136,6 +170,8 @@ export interface SimState {
   markets: MarketSnapshot[];
   books: HedgeBookState[];
   aggregateDelta: number;
+  notionalUsdt: number; // |aggregate δ| × spot — the inventory exposure being gated
+  idleReason: HedgeIdleReason; // why the live hedger is/!firing this tick
   pnlSeries: PnlPoint[];
   hedgeLog: HedgeActivity[];
   tauStar: number; // current flatten threshold in ticks (approx)

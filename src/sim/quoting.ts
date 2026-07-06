@@ -17,12 +17,15 @@ export interface Quote {
 
 // netSkew = qY - qN (house is short YES outcome when positive).
 // b = effective liquidity, used to normalise inventory into probability space.
+// tenorLabel is optional; when set to '5m' the invWiden5mBoost is applied (the
+// 5m market has the sharpest gamma wall, so it earns the extra widening).
 export function computeQuote(
   pEngine: number,
   netSkew: number,
   b: number,
   tauTicks: number,
-  qp: QuoteParams
+  qp: QuoteParams,
+  tenorLabel?: string
 ): Quote {
   if (qp.mode === 'manual') {
     const s = qp.manualHalfSpread;
@@ -45,10 +48,27 @@ export function computeQuote(
     1e-4,
     1 - 1e-4
   );
-  // spread = γσ²(T−t) + (2/γ)·ln(1+γ/k), with normalised horizon.
+  // Gamma / pin-risk term. A binary's adverse-selection cost EXPLODES as τ→0
+  // around the strike (digital gamma → ∞), and a linear perp can't hedge it, so
+  // the spread must charge for it. p(1−p) peaks ATM (max outcome uncertainty),
+  // and /√τ̂ makes the charge surge into expiry — the opposite of the Stoikov
+  // time term, which collapses to its floor exactly when toxicity is worst.
+  const pinRisk = (qp.gammaWiden ?? 0) * pEngine * (1 - pEngine) / Math.sqrt(hatTau);
+  // Inventory-proportional widening: half-spread grows with |netSkew|/b. 0 at
+  // flat inventory (keeps quotes competitive — liquidity keeps flowing); grows
+  // as the house accumulates one-sided inventory, paying users to close the gap
+  // before it becomes risky. The 5m market gets a configurable boost (its
+  // gamma wall is the sharpest of the three tenors, so early widening earns
+  // the most). The boost is the *only* thing that makes this tenor-specific;
+  // all three tenors read from one QuoteParams object.
+  const boost = tenorLabel === '5m' ? (qp.invWiden5mBoost ?? 1) : 1;
+  const invWidenTerm = (qp.invWiden ?? 0) * Math.abs(invNorm) * boost;
+  // spread = γσ²(T−t) + (2/γ)·ln(1+γ/k) + pin-risk + invWiden
   const spread =
     qp.gamma * qp.sigma * qp.sigma * hatTau +
-    (2 / qp.gamma) * Math.log(1 + qp.gamma / qp.k);
+    (2 / qp.gamma) * Math.log(1 + qp.gamma / qp.k) +
+    pinRisk +
+    invWidenTerm;
   const half = clamp(spread / 2, 1e-4, 0.15);
   return {
     reservation,

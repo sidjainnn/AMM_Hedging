@@ -14,6 +14,21 @@ export interface HedgeStatus {
   mark: number;
   symbol: string;
   hedgeError: string | null;
+  realizedVol: number;
+  volThreshold: number;
+  volGate: boolean;
+  notionalUsdt: number;
+  notionalGate: number; // effective gate (adaptive percentile or fixed)
+  gateMode: 'adaptive' | 'fixed';
+  gatePctl: number;
+  idleReason: 'armed' | 'idle-vol' | 'idle-inv' | 'disabled' | 'untracked';
+  hedgeActive: boolean;
+  feesPaid: number;
+  leverage: number;
+  abRunning: boolean;
+  abPos: number;
+  abBlocksOn: number;
+  abBlocksOff: number;
 }
 
 export function useHedgeControl() {
@@ -35,6 +50,39 @@ export function useHedgeControl() {
     return () => { stop = true; clearInterval(id); };
   }, []);
 
+  const setGates = useCallback(async (patch: { notionalUsdt?: number; volThreshold?: number; mode?: 'adaptive' | 'fixed'; pctl?: number }) => {
+    try {
+      const r = await fetch(`${BACKEND}/api/hedge/gates`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (r.ok) setStatus(await r.json());
+    } catch { /* ignore */ }
+  }, []);
+
+  const setLeverage = useCallback(async (leverage: number) => {
+    try {
+      const r = await fetch(`${BACKEND}/api/hedge/leverage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leverage }),
+      });
+      if (r.ok) setStatus((s) => (s ? { ...s, leverage } : s));
+    } catch { /* ignore */ }
+  }, []);
+
+  const setAB = useCallback(async (running: boolean) => {
+    try {
+      const r = await fetch(`${BACKEND}/api/ab`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ running }),
+      });
+      if (r.ok) setStatus(await r.json());
+    } catch { /* ignore */ }
+  }, []);
+
   const setEnabled = useCallback(async (on: boolean) => {
     try {
       const r = await fetch(`${BACKEND}/api/hedge/enable`, {
@@ -46,5 +94,5 @@ export function useHedgeControl() {
     } catch { /* ignore */ }
   }, []);
 
-  return { status, connected, setEnabled };
+  return { status, connected, setEnabled, setGates, setLeverage, setAB };
 }

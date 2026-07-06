@@ -25,6 +25,8 @@ export class Simulation {
   private btcSeries: SimState['btcSeries'] = [];
   private pnlSeries: SimState['pnlSeries'] = [];
   private aggregateDelta = 0;
+  private notionalUsdt = 0;
+  private idleReason: SimState['idleReason'] = 'untracked';
   private books: SimState['books'] = [];
   private tauStar = 0;
 
@@ -46,19 +48,27 @@ export class Simulation {
       c.jumpSize
     );
     if (c.externalPrice) this.price.external = true;
-    this.mm = new MarketManager(c.tenors, c.strikePcts, c.engine);
+    this.mm = new MarketManager(c.tenors, c.strikePcts, c.engine, {
+      defaultLockoutTicks: c.expiryLockoutTicks,
+      lockoutTicksByTenor: { '5m': c.expiryLockoutTicks5m },
+    });
     this.mm.seedAll(0, this.price.spot);
     this.hedge = new HedgeEngine(
       c.hedgeDialB,
       c.kFlat,
       c.feeBps,
-      c.fundingRate8h / TENOR_TICKS_8H
+      c.fundingRate8h / TENOR_TICKS_8H,
+      c.hedgeNotionalUsdt,
+      c.riskTierLow,
+      c.riskTierHigh
     );
     this.agents = makeAgents(c.agentModel, this.rng);
     this.recentDrift = 0;
     this.btcSeries = [{ tick: 0, btc: this.price.spot, provenance: 'sim-ground-truth' }];
     this.pnlSeries = [];
     this.aggregateDelta = 0;
+    this.notionalUsdt = 0;
+    this.idleReason = 'untracked';
     this.books = [];
     this.tauStar = 0;
   }
@@ -84,6 +94,8 @@ export class Simulation {
   userTrade(marketId: string, side: 'YES' | 'NO', shares: number): number {
     const m = this.mm.markets.find((x) => x.id === marketId);
     if (!m || shares <= 0) return 0;
+    // omit lockoutTicks so the per-tenor value (m.lockoutTicks) governs — the
+    // 5m gets its 60s reduce-only window, others 30s.
     return m.executeEngineBuy(side, shares, 'you', this.tick);
   }
   setAgentModel(model: AgentModel): void {
@@ -107,6 +119,15 @@ export class Simulation {
   setFunding8h(f: number): void {
     this.cfg.fundingRate8h = f;
     this.hedge.setFundingPerTick(f / TENOR_TICKS_8H);
+  }
+  setHedgeNotionalUsdt(u: number): void {
+    this.cfg.hedgeNotionalUsdt = u;
+    this.hedge.setHedgeNotionalUsdt(u);
+  }
+  setRiskTier(low: number, high: number): void {
+    this.cfg.riskTierLow = low;
+    this.cfg.riskTierHigh = high;
+    this.hedge.setRiskTier(low, high);
   }
 
   step(): void {
@@ -136,6 +157,7 @@ export class Simulation {
       noiseIntensity: this.cfg.noiseIntensity,
       directionalIntensity: this.cfg.directionalIntensity,
       arbIntensity: this.cfg.arbIntensity,
+      lockoutTicks: this.cfg.expiryLockoutTicks,
     });
 
     // 5. refresh quotes post-flow for display
@@ -150,6 +172,8 @@ export class Simulation {
       this.tick
     );
     this.aggregateDelta = h.aggregateDelta;
+    this.notionalUsdt = h.notionalUsdt;
+    this.idleReason = h.idleReason;
     this.books = h.books;
     this.tauStar = h.tauStar;
 
@@ -180,6 +204,8 @@ export class Simulation {
       markets: this.mm.markets.map((m) => m.snapshot(this.tick)),
       books: this.books,
       aggregateDelta: this.aggregateDelta,
+      notionalUsdt: this.notionalUsdt,
+      idleReason: this.idleReason,
       pnlSeries: this.pnlSeries,
       hedgeLog: this.hedge.log,
       tauStar: this.tauStar,
