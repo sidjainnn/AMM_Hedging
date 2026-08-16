@@ -197,6 +197,7 @@ production:
 | [`docs/ab-protocol.md`](docs/ab-protocol.md) | pre-registered hedged-vs-unhedged A/B: metric, exclusions, criteria |
 | [`docs/engines.md`](docs/engines.md) · [`docs/quoting.md`](docs/quoting.md) · [`docs/hedging.md`](docs/hedging.md) | the maths, per layer |
 | [`docs/agents.md`](docs/agents.md) · [`docs/agents-implementation.md`](docs/agents-implementation.md) | trader population and reward design |
+| [`docs/design-rules.md`](docs/design-rules.md) | the invariants the whole build rests on |
 | [`docs/decisions.md`](docs/decisions.md) | *why* each locked decision was made |
 | [`docs/STATUS.md`](docs/STATUS.md) | current state and scope |
 

@@ -84,7 +84,7 @@ export interface HedgeBookState {
   fees: number;
   funding: number;
   netPnl: number;
-  // P&L decomposition (CLAUDE.md hedging.md): four components.
+  // P&L decomposition (design-rules.md hedging.md): four components.
   spreadCapture: number;
   inventoryPnl: number;
   hedgePnl: number;

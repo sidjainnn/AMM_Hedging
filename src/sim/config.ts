@@ -1,6 +1,6 @@
 import type { SimConfig } from './types';
 
-// Time model (CLAUDE.md Q3): real-time loop, fixed tick. τ-based calcs use
+// Time model (design-rules.md Q3): real-time loop, fixed tick. τ-based calcs use
 // elapsed ticks. Default 1s/tick; tenors expressed in ticks accordingly.
 export const TICKS_PER_8H = (8 * 3600 * 1000) / 1000; // at 1s/tick
 

@@ -2,7 +2,7 @@
 
 > **⚠️ Deviations in the current build (see `docs/STATUS.md`):**
 > - **A backend now exists** (`server/`, Node/Express) — the "client-side, no
->   backend" decision was superseded when live data was added (CLAUDE.md
+>   backend" decision was superseded when live data was added (design-rules.md
 >   anticipated this: "extract a server later if real data is added").
 > - **Underlying = live Binance demo feed** (single source of truth; not
 >   synthetic — "feed-free" branding retired). The AMM engine still prices the

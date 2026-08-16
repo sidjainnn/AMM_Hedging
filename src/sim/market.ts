@@ -137,7 +137,7 @@ export class Market {
     if (this.lastTrades.length > MAX_PRINTS) this.lastTrades.pop();
   }
 
-  // Settlement: realise inventory P&L into cashCollected (CLAUDE.md Q4).
+  // Settlement: realise inventory P&L into cashCollected (design-rules.md Q4).
   settle(outcomeYes: boolean): number {
     const payout = this.engine.settlementLiability(outcomeYes);
     this.cashCollected -= payout;

@@ -1,5 +1,5 @@
 // Simulation orchestrator. Wires the four layers into one deterministic tick
-// loop. Everything is reproducible from config.seed (CLAUDE.md Q5): reset()
+// loop. Everything is reproducible from config.seed (design-rules.md Q5): reset()
 // rebuilds identical state. Sub-streams are derived per subsystem so adding
 // one doesn't perturb the others' draw sequence.
 
@@ -214,7 +214,7 @@ export class Simulation {
     };
   }
 
-  // Static stress test (CLAUDE.md Q5/Q5-stress): instantaneous spot shock,
+  // Static stress test (design-rules.md Q5/Q5-stress): instantaneous spot shock,
   // reprice live markets + hedge marks, report per-book P&L delta. Pure
   // function of current state — does not advance or branch the sim.
   stress(shocks: number[]): { shockPct: number; A: number; B: number; C: number }[] {

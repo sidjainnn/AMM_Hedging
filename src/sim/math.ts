@@ -1,4 +1,4 @@
-// Numerically-stable math primitives (CLAUDE.md Q6: float64 + log-sum-exp/softplus).
+// Numerically-stable math primitives (design-rules.md Q6: float64 + log-sum-exp/softplus).
 
 // log(e^a + e^b) without overflow.
 export function logSumExp2(a: number, b: number): number {

@@ -1,5 +1,5 @@
 // Agent layer with a swappable model so we can roll back to the original simple
-// agents at any time (CLAUDE.md: "agents meant to be retuned after the system
+// agents at any time (design-rules.md: "agents meant to be retuned after the system
 // is observable"). Both models reference the observable spot (live Binance) +
 // ESTIMATED sigma; the AMM engine still prices off inventory, not the feed
 // (golden rule #6: deployment logic uses est-σ / own-flow only).

@@ -1,4 +1,4 @@
-// Seedable RNG — first-class requirement (CLAUDE.md Q5).
+// Seedable RNG — first-class requirement (design-rules.md Q5).
 // Whole sim is reproducible from one seed: market events, agent behaviour,
 // fills, vol shocks all draw from RNG instances derived from the master seed.
 

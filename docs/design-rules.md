@@ -1,4 +1,9 @@
-# Crypto Binary Prediction Market — Research Simulator
+# Design rules — Crypto Binary Prediction Market Simulator
+
+The invariants this project is built on, the layer order it was built in, and where
+each piece is specified. Read this before changing the engine, the quoting overlay
+or the hedging layer: the "golden rules" below are load-bearing, and several were
+adopted after a specific failure.
 
 A **research dashboard + simulation** for crypto binary prediction markets. It compares
 pricing engines (LMSR / CPMM / LS-LMSR) under a Stoikov/manual-spread quoting layer, runs
@@ -7,11 +12,11 @@ layer** against the **live Binance (demo) BTC feed**. Crypto-only. No real money
 against the Binance **demo** venue (paper). The BTC underlying is the live Binance price;
 the binary markets and the hedge book are simulated/paper.
 
-This file is loaded every session: keep it lean. Detailed specs live in `docs/` and should be
-read on demand (see pointers below).
+Kept deliberately short — detailed specs live alongside it in `docs/` (pointers below).
 
-> **Resuming work? Read `docs/STATUS.md` first** — current state, how to run, and the
-> prioritized next steps. `docs/agents-implementation.md` holds the deferred agent-reward design.
+> **Picking the work back up?** Read [`STATUS.md`](STATUS.md) first — current state and
+> scope. [`agents-implementation.md`](agents-implementation.md) holds the deferred
+> agent-reward design.
 
 ## Stack
 - **TypeScript** end to end (shared types from engine → UI).
