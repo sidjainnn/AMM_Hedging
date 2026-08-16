@@ -5,6 +5,7 @@ const BACKEND =
   (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8787';
 
 const WS_URL = BACKEND.replace(/^http/, 'ws') + '/ws';
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === '1';
 
 /**
  * LIVE STATE (UPDATED MODEL)
@@ -52,7 +53,10 @@ export function useLiveBackend(active: boolean) {
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    if (!active) {
+    // No backend exists in the static showcase build — don't open a WebSocket to
+    // localhost or poll it. Page 4 renders its "run the backend locally"
+    // instructions instead, which is the correct thing to show there anyway.
+    if (!active || DEMO_MODE) {
       wsRef.current?.close();
       setConnected(false);
       return;

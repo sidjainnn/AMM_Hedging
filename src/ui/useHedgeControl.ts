@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 // Lightweight control for the Binance (demo) hedge from the 5m page: polls the
 // backend hedge status and toggles it on/off. Does NOT pull the full sim state.
 const BACKEND = (import.meta.env.VITE_BACKEND_URL as string) || 'http://localhost:8787';
+const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === '1';
 
 export interface HedgeStatus {
   hedgeEnabled: boolean;
@@ -36,6 +37,11 @@ export function useHedgeControl() {
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
+    // The static showcase build has no backend to poll. Without this guard the
+    // hosted demo fires a failed request at localhost:8787 every 2 seconds
+    // forever, filling a visitor's console with ERR_CONNECTION_REFUSED.
+    if (DEMO_MODE) return;
+
     let stop = false;
     const poll = async () => {
       try {

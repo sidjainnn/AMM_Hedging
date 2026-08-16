@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { useLiveBackend } from './useLiveBackend';
 import { useHedgeControl } from './useHedgeControl';
 import { fmt, usd, usd2, cls, priceDomain, priceTick } from './format';
+import { DEMO_MODE } from './useSimulation';
 
 // A/B window ledger table — one row per settled 5m window of the SERVER book
 // (the one the demo account hedges). Data also lives on disk:
@@ -100,9 +101,17 @@ export function Page4Live() {
   if (!state) {
     return (
       <div className="panel" style={{ textAlign: 'center', padding: 48 }}>
-        <h3>Connecting to live backend…</h3>
+        <h3>{DEMO_MODE ? 'This page runs locally only' : 'Connecting to live backend…'}</h3>
         <p className="hint" style={{ marginTop: 10 }}>
-          Expecting the server at <b>{backend}</b>. If it isn't running:
+          {DEMO_MODE ? (
+            <>
+              The live page needs the Node backend and a Binance demo key, so it
+              can't run on the hosted demo. Every other page here is fully live.
+              To run it yourself:
+            </>
+          ) : (
+            <>Expecting the server at <b>{backend}</b>. If it isn't running:</>
+          )}
         </p>
 
         <pre
