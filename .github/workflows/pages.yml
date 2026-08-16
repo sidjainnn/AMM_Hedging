@@ -24,11 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # enablement:true turns Pages on for the repo if it isn't already, so the
-      # deploy doesn't fail on a first run against a repo with Pages disabled.
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
+      # NOTE: Pages must be enabled once by hand — Settings → Pages → Source →
+      # "GitHub Actions". The workflow token cannot turn it on itself
+      # (configure-pages@v5 enablement:true fails with insufficient permission),
+      # so until it is enabled the build succeeds and only deploy fails.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
