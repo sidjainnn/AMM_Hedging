@@ -11,7 +11,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useLiveBackend } from './useLiveBackend';
 import { useHedgeControl } from './useHedgeControl';
-import { fmt, usd, usd2, cls } from './format';
+import { fmt, usd, usd2, cls, priceDomain, priceTick } from './format';
 
 // A/B window ledger table — one row per settled 5m window of the SERVER book
 // (the one the demo account hedges). Data also lives on disk:
@@ -130,6 +130,11 @@ npm start`}
     t: p.tick,
     btc: p.btc,
   }));
+  // Observed span drives tick precision, so a calm window still gets readable
+  // (distinct) axis labels instead of five identical "63.1k"s.
+  const btcVals = priceData.map((d) => d.btc).filter((v) => Number.isFinite(v));
+  const btcSpan = btcVals.length ? Math.max(...btcVals) - Math.min(...btcVals) : 0;
+  const btcDomain = priceDomain(btcVals);
 
   return (
     <div className="col">
@@ -212,11 +217,11 @@ npm start`}
                 stroke="#232a3b"
               />
               <YAxis
-                domain={['auto', 'auto']}
+                domain={btcDomain}
                 tick={{ fill: '#8a93a6', fontSize: 10 }}
                 stroke="#232a3b"
-                width={58}
-                tickFormatter={(v) => (v / 1000).toFixed(1) + 'k'}
+                width={72}
+                tickFormatter={priceTick(btcSpan)}
               />
               <Tooltip
                 contentStyle={{
@@ -389,7 +394,7 @@ npm start`}
           <LineChart data={L.equitySeries} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
             <XAxis dataKey="t" tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b" />
             <YAxis yAxisId="eq" domain={['auto', 'auto']} tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b" width={64} tickFormatter={(v) => usd(Number(v))} />
-            <YAxis yAxisId="btc" orientation="right" domain={['auto', 'auto']} tick={{ fill: '#6b6b40', fontSize: 10 }} stroke="#232a3b" width={48} tickFormatter={(v) => (Number(v) / 1000).toFixed(0) + 'k'} />
+            <YAxis yAxisId="btc" orientation="right" domain={btcDomain} tick={{ fill: '#6b6b40', fontSize: 10 }} stroke="#232a3b" width={62} tickFormatter={priceTick(btcSpan)} />
             <Tooltip contentStyle={{ background: '#131722', border: '1px solid #232a3b', borderRadius: 8, fontSize: 12 }}
               labelStyle={{ color: '#8a93a6' }} formatter={(v, n) => [n === 'btc' ? '$' + fmt(Number(v), 0) : usd2(Number(v)), n === 'btc' ? 'BTC' : 'equity']} />
             {L.startEquity != null && <ReferenceLine yAxisId="eq" y={L.startEquity} stroke="#3a4357" strokeDasharray="4 4" />}

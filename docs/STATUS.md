@@ -1,12 +1,22 @@
 # STATUS / HANDOFF — read this first in a new session
 
-Last updated: build session that added the 5m-page P&L/money-flow panel, Hedge
-Risk Lab, the Binance hedge on/off button, the break-even harness (k=12 default),
-and MM/agent P&L reconciliation — on top of live Binance demo hedging + wallets +
-information sentiment.
+Last updated: **2026-07-31**.
 
-**To resume cold:** open Claude Code in `~/Desktop` (loads memory + CLAUDE.md),
-then say "read docs/STATUS.md and docs/agents-implementation.md".
+> ## SCOPE — what this repo is and isn't
+>
+> `amm-hedging` is the **research simulator** where the quantitative results were
+> derived. It is a self-contained study, not an operational system.
+>
+> **Read this repo for:** the P&L identity and break-even economics, the
+> agent-population design, the gamma-wall A/B, and the hedging experiment results.
+> **Do not read it for:** production architecture or anything operational.
+>
+> **Later findings that supersede older text below:** Black-Scholes was replaced
+> by an empirically-calibrated σ√τ curve (~7× more accurate against real market
+> prices); the hedging layer works best as an independent sidecar with its own
+> price feed; and cross-market gamma hedging was tested and returned **NO-GO**.
+
+---
 
 ---
 

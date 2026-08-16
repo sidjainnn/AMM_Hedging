@@ -20,11 +20,13 @@ const CSV_PATH = path.join(DATA_DIR, 'ledger.csv');
 export const LEDGER_COLUMNS = [
   'ts_close', 'session', 'win', 'strike', 'outcome', 'btc_open', 'btc_close',
   'spread_usd', 'inv_usd', 'unhedged_net',
-  'equity_open', 'equity_close', 'hedge_pnl', 'hedged_net',
+  // hedge_pnl = hedger-tracked (realized+unrealized, exact at boundary);
+  // hedge_pnl_acct = account-equity delta (cross-check, smears across boundaries)
+  'equity_open', 'equity_close', 'hedge_pnl', 'hedge_pnl_acct', 'hedged_net',
   'fees_est', 'slippage_usd', 'fills', 'notional_traded',
   'enabled_frac', 'armed_frac', 'idle_inv_frac', 'idle_vol_frac',
   'gate_mode', 'effective_gate', 'realized_vol',
-  'stale_ticks', 'partial', 'excluded',
+  'stale_ticks', 'partial', 'transition', 'excluded',
 ] as const;
 
 export type LedgerRow = Record<(typeof LEDGER_COLUMNS)[number], string | number>;
@@ -36,6 +38,7 @@ export interface WindowBaseline {
   spread: number;
   inv: number;
   equity: number | null;
+  hedgePnlCum: number; // hedger-tracked cumulative hedge P&L at open
   fees: number;
   slippage: number;
   fills: number;
@@ -57,15 +60,26 @@ export class WindowLedger {
   private staleTicks = 0;
   private volSum = 0;
 
+  private writeWarned = false; // warn once, then stay quiet on repeated failures
+
   constructor() {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    if (!fs.existsSync(CSV_PATH)) {
-      fs.writeFileSync(CSV_PATH, LEDGER_COLUMNS.join(',') + '\n');
+    try {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+      if (!fs.existsSync(CSV_PATH)) {
+        fs.writeFileSync(CSV_PATH, LEDGER_COLUMNS.join(',') + '\n');
+      }
+    } catch (e) {
+      // e.g. macOS TCC denies the Desktop folder — must NOT crash the server
+      // (that would kill the live A/B run). Windows still compute in memory.
+      console.warn('[ledger] cannot initialise CSV (rows will be in-memory only):', String(e).slice(0, 120));
     }
   }
 
-  open(base: WindowBaseline): void {
+  private transition = false; // first unhedged window after a hedged block
+
+  open(base: WindowBaseline, isTransition = false): void {
     this.base = base;
+    this.transition = isTransition;
     this.ticks = this.enabledTicks = this.armedTicks = 0;
     this.idleInvTicks = this.idleVolTicks = this.staleTicks = 0;
     this.volSum = 0;
@@ -91,6 +105,7 @@ export class WindowLedger {
     slippage: number;
     fills: number;
     notionalTraded: number;
+    hedgePnlCum: number;
     gateMode: string;
     effectiveGate: number;
   }): LedgerRow | null {
@@ -99,7 +114,10 @@ export class WindowLedger {
     const spread = now.spread - b.spread;
     const inv = now.inv - b.inv;
     const unhedged = spread + inv;
-    const hedgePnl = now.equity != null && b.equity != null ? now.equity - b.equity : null;
+    // authoritative hedge P&L: hedger-tracked delta (exact at the boundary tick).
+    const hedgePnl = now.hedgePnlCum - b.hedgePnlCum;
+    // cross-check: account-equity delta (smears across boundaries via 10s refresh).
+    const hedgePnlAcct = now.equity != null && b.equity != null ? now.equity - b.equity : null;
     const partial = this.firstWindow;
     this.firstWindow = false;
     const n = (x: number, d = 2) => Number(x.toFixed(d));
@@ -116,8 +134,9 @@ export class WindowLedger {
       unhedged_net: n(unhedged),
       equity_open: b.equity != null ? n(b.equity) : '',
       equity_close: now.equity != null ? n(now.equity) : '',
-      hedge_pnl: hedgePnl != null ? n(hedgePnl) : '',
-      hedged_net: hedgePnl != null ? n(unhedged + hedgePnl) : '',
+      hedge_pnl: n(hedgePnl),
+      hedge_pnl_acct: hedgePnlAcct != null ? n(hedgePnlAcct) : '',
+      hedged_net: n(unhedged + hedgePnl),
       fees_est: n(now.fees - b.fees, 4),
       slippage_usd: n(now.slippage - b.slippage, 4),
       fills: now.fills - b.fills,
@@ -131,9 +150,22 @@ export class WindowLedger {
       realized_vol: this.ticks ? Number((this.volSum / this.ticks).toExponential(3)) : 0,
       stale_ticks: this.staleTicks,
       partial: partial ? 1 : 0,
-      excluded: partial || this.staleTicks > 0 ? 1 : 0, // pre-registered exclusion rule
+      transition: this.transition ? 1 : 0,
+      // pre-registered exclusion: boot/partial, any stale-feed tick, OR the
+      // transition window (flatten P&L bleeds across the boundary here).
+      excluded: partial || this.staleTicks > 0 || this.transition ? 1 : 0,
     };
-    fs.appendFileSync(CSV_PATH, LEDGER_COLUMNS.map((c) => row[c]).join(',') + '\n');
+    try {
+      fs.appendFileSync(CSV_PATH, LEDGER_COLUMNS.map((c) => row[c]).join(',') + '\n');
+    } catch (e) {
+      // THE crash that took the server (and the A/B run) down: an EPERM on this
+      // append propagated as an unhandled exception. Never let a disk error kill
+      // the run — drop the row, warn once, keep going.
+      if (!this.writeWarned) {
+        console.warn('[ledger] append failed — CSV rows will be lost until this clears:', String(e).slice(0, 120));
+        this.writeWarned = true;
+      }
+    }
     return row;
   }
 

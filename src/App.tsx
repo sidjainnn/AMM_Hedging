@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useSimulation } from './ui/useSimulation';
+import { useSimulation, DEMO_MODE } from './ui/useSimulation';
 import { Page1Trading } from './ui/Page1Trading';
 import { Page2Hedge } from './ui/Page2Hedge';
 import { Page3Backtest } from './ui/Page3Backtest';
@@ -18,7 +18,11 @@ export default function App() {
       <div className="topbar">
         <div className="brand">
           <h1>Crypto Binary Prediction Market — Research Simulator</h1>
-          <span className="sub">live Binance feed · LMSR / CPMM / LS-LMSR inventory-priced AMM · real-time perp hedging · demo / paper</span>
+          <span className="sub">
+            {DEMO_MODE
+              ? 'static showcase build · synthetic seeded price · LMSR / CPMM / LS-LMSR inventory-priced AMM · no live feed, no orders'
+              : 'live Binance feed · LMSR / CPMM / LS-LMSR inventory-priced AMM · real-time perp hedging · demo / paper'}
+          </span>
         </div>
 
         <div className="tabs">
@@ -34,8 +38,12 @@ export default function App() {
           <button className={'tab ' + (page === 3 ? 'active' : '')} onClick={() => setPage(3)}>
             Backtest
           </button>
-          <button className={'tab ' + (page === 4 ? 'active' : '')} onClick={() => setPage(4)}>
-            Live (demo)
+          <button
+            className={'tab ' + (page === 4 ? 'active' : '')}
+            onClick={() => setPage(4)}
+            title={DEMO_MODE ? 'Needs the local backend + Binance demo keys — run it locally, see the README' : undefined}
+          >
+            {DEMO_MODE ? 'Live (local only)' : 'Live (demo)'}
           </button>
         </div>
 

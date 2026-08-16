@@ -219,7 +219,8 @@ export interface OrderResult {
 
 export async function marketOrder(
   side: 'BUY' | 'SELL',
-  qty: number
+  qty: number,
+  reduceOnly = false
 ): Promise<OrderResult> {
   const f = await getFilters();
 
@@ -231,6 +232,7 @@ export async function marketOrder(
 
   if (config.dryRun) return { dryRun: true, side, qty: q, avgPrice: 0 };
 
+  // reduceOnly lets sub-$50 closes through and can never flip the position sign.
   const raw = await signedRequest<{ avgPrice?: string; orderId?: number }>(
     config.futuresBase, 'POST', '/fapi/v1/order', {
       symbol: config.symbol,
@@ -238,6 +240,7 @@ export async function marketOrder(
       type: 'MARKET',
       quantity: q,
       newOrderRespType: 'RESULT',
+      ...(reduceOnly ? { reduceOnly: 'true' } : {}),
     });
 
   // The demo venue's POST response omits avgPrice/cumQuote, so query the order

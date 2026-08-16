@@ -77,6 +77,10 @@ export const config = {
   hedgeGatePctl: parseFloat(env.HEDGE_GATE_PCTL ?? '0.6'),
   riskTierLow: parseFloat(env.HEDGE_TIER_LOW ?? '0.3'),
   riskTierHigh: parseFloat(env.HEDGE_TIER_HIGH ?? '0.7'),
+  // Rebalance deadband (USDT): skip a hedge trade if the target moved less than
+  // this from the current position — stops tiny wobbles from churning taker
+  // fees. Must be ≥ the $50 min-notional so any order that fires is valid.
+  hedgeDeadbandUsdt: parseFloat(env.HEDGE_DEADBAND_USDT ?? '75'),
   // Perp leverage for the hedge symbol. Default 1x — a hedge wants no leverage.
   leverage: parseInt(env.HEDGE_LEVERAGE ?? '1', 10),
   // Multi-Assets Mode ON so USDC + USDT together back the BTCUSDT hedge (~10k).

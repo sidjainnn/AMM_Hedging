@@ -11,18 +11,23 @@ async function main() {
   console.log(`[amm-server] DRY_RUN=${config.dryRun}  HEDGE_ENABLED=${config.hedgeEnabled}  keys=${config.hasKeys()}`);
   if (!config.dryRun) console.log('[amm-server] ⚠️  DRY_RUN is OFF — real DEMO orders will be sent when hedging is enabled.');
 
-  // Retry the initial price fetch — a transient DNS/network blip at boot should
-  // not kill the server (observed: ENOTFOUND api.binance.com → hard exit).
+  // Retry the initial price fetch — a transient DNS/network blip at boot must
+  // not kill the server (observed: ENOTFOUND / fetch failed → hard exit that
+  // stopped the live A/B run). Retry ~2 min, then start ANYWAY with a fallback
+  // seed: the tick loop + stale-feed guard take over and self-correct on the
+  // first successful fetch. Continuity > a perfect opening strike.
+  const FALLBACK_BTC = parseFloat(process.env.FALLBACK_BTC ?? '100000');
   let initial = 0;
-  for (let attempt = 1; ; attempt++) {
-    try {
-      initial = await getSpotPrice();
-      break;
-    } catch (e) {
-      if (attempt >= 10) throw e;
-      console.warn(`[amm-server] initial price fetch failed (attempt ${attempt}/10), retrying in 3s:`, String(e).slice(0, 100));
+  for (let attempt = 1; attempt <= 40; attempt++) {
+    try { initial = await getSpotPrice(); break; }
+    catch (e) {
+      console.warn(`[amm-server] initial price fetch failed (attempt ${attempt}/40), retrying in 3s:`, String(e).slice(0, 100));
       await new Promise((r) => setTimeout(r, 3000));
     }
+  }
+  if (!initial) {
+    initial = FALLBACK_BTC;
+    console.warn(`[amm-server] ⚠️ Binance unreachable at boot — starting with fallback $${initial}; the feed will self-correct once reachable.`);
   }
   console.log(`[amm-server] initial spot price ${config.symbol} = ${initial}`);
   const runner = new Runner(initial);
@@ -92,3 +97,10 @@ main().catch((e) => {
   console.error('[amm-server] fatal:', e);
   process.exit(1);
 });
+
+// Once the sim + live A/B are running, a stray error in a timer callback (e.g. a
+// disk EPERM, a transient fetch throw) must NOT kill the process — that would
+// stop the multi-hour experiment. Log loudly and keep running. Startup errors
+// still exit via main().catch above.
+process.on('uncaughtException', (e) => console.error('[amm-server] uncaughtException (continuing):', e));
+process.on('unhandledRejection', (e) => console.error('[amm-server] unhandledRejection (continuing):', e));

@@ -1,126 +1,203 @@
 # Crypto Binary Prediction Market — Research Simulator
 
-A TypeScript + React simulation of crypto binary prediction markets. It compares
-three **inventory-priced AMM** engines (LMSR / CPMM / LS-LMSR) under a Stoikov /
-manual-spread quoting overlay, runs simulated agents that create realistic order
-flow and skew, and tests a real-time perp hedging layer — wired to the
-**live Binance demo** venue. The **live Binance feed is the single source of
-truth** for the BTC underlying (marking, settlement, agents); the AMM engine
-still discovers the *binary* price from inventory/flow, not from the feed. The BTC underlying is the live Binance price; the
-binary markets + hedge book are simulated/paper. No real money (demo only).
+**Can a prediction-market maker hedge away the directional risk it is forced to carry?**
 
-A small **Node/Express backend** (`server/`) runs the sim off the live feed and
-places real **demo** futures orders; the React app is the dashboard.
+An automated market maker in binary options is a *principal*, not a broker. It
+warehouses whatever inventory skew the crowd leaves behind, so its P&L is exposed
+to BTC direction in a way an order-book exchange never is. This project builds
+that market maker end to end — three AMM pricing engines, a quoting overlay, a
+simulated trader population, and a real-time perp hedging layer wired to the live
+Binance demo venue — and then measures whether hedging the skew actually pays.
 
-**Resuming work?** Read [`docs/STATUS.md`](docs/STATUS.md) — current state, how to
-run, and prioritized next steps. Original design specs live in `docs/` + `CLAUDE.md`.
+**Short answer: yes, in the tails.** Delta hedging removes ~33–37% of P&L
+dispersion across BTC outcomes and turns the worst case from **−$115 to +$109**.
+It also costs more than it saves in calm markets. Both results are below.
 
-## Run
+### ▶ [Try the live demo →](https://sidjainnn.github.io/AMM_Hedging/)
+
+<p align="center">
+  <img src="docs/images/demo.gif" alt="The 5-minute BTC market running: agents trade against the LMSR engine, quotes reprice off inventory, and the market rolls at expiry" width="100%">
+</p>
+
+<p align="center"><em>A 5-minute BTC market running live: simulated traders hit the engine, the LMSR reprices off inventory, and the market rolls and settles at expiry.</em></p>
+
+---
+
+## The result
+
+An AMM's inventory book is **short gamma** — it loses on big moves in *either*
+direction — so a single price path can't isolate the directional risk and a
+linear beta is meaningless. Instead the same order flow is replayed across a
+range of BTC outcomes (−3%…+3% terminal, real intraday wiggles preserved), and
+the **dispersion of final P&L** is measured. Averaged over 11 real BTC windows:
+
+| Strategy | P&L dispersion (σ) | Worst case | Dispersion removed |
+|---|---:|---:|---:|
+| unhedged | $200 | **−$115** | — |
+| sentiment | $156 | +$9 | 22% |
+| delta | $135 | +$85 | 33% |
+| **delta + sentiment tilt** | **$126** | **+$109** | **37%** |
+
+The unhedged book's loss is concentrated exactly where it hurts — the tails.
+Hedging converts a short-gamma hump into a flat, reliably positive P&L. Pure
+sentiment is the weakest hedge on its own (a noisy directional proxy) but adds
+edge as a *tilt* on top of delta.
+
+**The market maker also has to survive its own liquidity subsidy.** An LMSR pays
+`b·ln2` per resolved market for price discovery (~$76 at b=110); the spread has
+to out-earn it. Tuning the vig, an inventory-proportional widening term, a
+risk-tiered hedge dial and a per-tenor expiry lockout gets a 5-minute market to
+**$77.9 mean net per window with 97% of windows break-even** (64-window A/B,
+worst −$43) — up from $71.5 / 95% with the gamma-wall fix alone.
+
+---
+
+## What you're looking at
+
+### The market — a live 5-minute BTC binary
+
+<img src="docs/images/01-5m-market.png" alt="The 5m market page: 'Will BTC be ≥ $63,100 at resolution?' with live YES/NO quotes, engine and agent controls, and a probability chart" width="100%">
+
+A rolling "Will BTC be ≥ K at resolution?" market with an at-the-money strike,
+priced by the AMM off inventory alone. The engine (LMSR / CPMM / LS-LMSR), the
+quoting overlay and the agent mix are all switchable while it runs — the point is
+to *see* the mechanics move, not to bury them behind knobs.
+
+### The hedge — three books on identical flow
+
+<img src="docs/images/03-hedge-overview.png" alt="Hedge overview: aggregate delta, flatten threshold, and three hedge book cards (A pure hedge, B ride bias, C approx delta) with a P&L decomposition chart" width="100%">
+
+One market-making book, three hedge legs, so the comparison is clean:
+
+| Book | Hedge policy | Isolates |
+|---|---|---|
+| **A** | full δ-neutral, *true* σ | the upper bound |
+| **B** | rides part of the crowd bias (h < 1) | hedge **policy** |
+| **C** | full δ-neutral, *estimated* σ | **deployment realism** |
+
+A vs B isolates policy; A vs C isolates what you lose by not knowing σ. Only
+**Book C** is actually deployable — A and B read a volatility you don't have in
+production. Every number is decomposed into spread capture · inventory · hedge ·
+fees · funding.
+
+### The engine comparison — does inventory-aware quoting pay?
+
+<img src="docs/images/04-backtest.png" alt="Backtest page comparing LMSR, CPMM and LS-LMSR with Avellaneda-Stoikov quoting versus a fixed spread, over 2000 ticks and 4 seeds" width="100%">
+
+Same engines, same flow, quoting overlay on and off. Avellaneda–Stoikov's
+inventory-aware asymmetric spread is worth **2–4× the net P&L** of a symmetric
+fixed spread across all three engines (LS-LMSR $992 vs $421; LMSR $709 vs $193),
+with every engine profitable in 4/4 seeds under it. LS-LMSR leads throughout.
+Seeds are resampled on demand, so exact figures move run to run — the ordering
+and the size of the gap do not.
+
+### The live venue — real demo orders
+
+<img src="docs/images/05-live-demo.png" alt="Live demo page showing the Binance demo venue, spot and futures mark price, three live markets, hedge position and futures account equity" width="100%">
+
+The backend runs the sim off the live Binance feed and places **real orders on
+the Binance demo (paper) venue**, tracking actual account equity so the concept
+can be checked against real fills, fees and funding rather than a friendly
+simulation. Mainnet hosts are hard-blocked in code.
+
+---
+
+## Try it
+
+**Hosted demo:** [sidjainnn.github.io/AMM_Hedging](https://sidjainnn.github.io/AMM_Hedging/) —
+runs entirely in the browser on a seeded synthetic price. No feed, no keys, no
+orders; it's a showcase build and labels itself as one. The Backtest page is
+fully live there.
+
+**Locally, with the real Binance feed:**
 
 ```bash
-# web dashboard
 npm install
-npm run dev      # http://localhost:5173 (or 5174)
-npm run build    # typecheck + production bundle
+npm run dev            # dashboard → http://localhost:5173
+```
 
-# live backend (for the Live demo tab + live price feed)
+```bash
 cd server
-cp .env.example .env     # add your Binance DEMO key + secret (both)
+cp .env.example .env   # add Binance DEMO key + secret
 npm install
-npm start                # http://localhost:8787
+npm start              # backend → http://localhost:8787
 ```
 
-Requires Node 18+ (developed on Node 22). Keys live only in `server/.env`
-(gitignored). The backend is demo/paper only — production hosts are hard-blocked,
-`DRY_RUN=true` by default, and hedging must be enabled on the Live tab.
+The dashboard runs without the backend, but the live-feed pages need it — the
+sim deliberately **freezes rather than inventing a price** when the feed is down,
+so markets can never settle on stale data. Node 18+ (developed on 22). Keys live
+only in `server/.env`, which is gitignored.
 
-## Architecture
+---
 
-Built bottom-up in the doc's four-layer order; each layer is testable before
-the next sits on it.
+## How it works
 
 ```
-src/sim/                 deterministic simulation core (no React)
-  rng.ts                 seedable RNG (mulberry32) + named sub-streams
-  math.ts                log-sum-exp / softplus / normal CDF (float64, stable)
-  events.ts              digital event prob P(BTC(t+τ)>K) + dp/dS
-  engines/index.ts       LMSR · CPMM · LS-LMSR behind one interface
-  quoting.ts             manual spread + Avellaneda–Stoikov overlay
-  market.ts              one binary market + MarketManager (rolling tenors,
-                         strike ladder, order book, pair-mint / engine channels)
-  price.ts               synthetic GBM OR external live price (externalPrice flag)
-  agents/                swappable trader models (see below)
-    index.ts             AgentEngine interface + factory
-    simple.ts            original v1 (noise · directional · arbitrageur) — rollback
-    behavioral.ts        default: Poisson arrivals, wallets/reward, sentiment
-  hedging.ts             aggregate δ, σ√τ flatten, books A/B/C, P&L decomposition
-  sim.ts                 tick-loop orchestrator, userTrade, stress, agentStats
-  backtest.ts/validate.ts  headless tools (force synthetic price)
-  config.ts              default scenario / tunables
-src/ui/                  React dashboard (5 tabs)
-  Page5Market.tsx        5m Polymarket-style market + user wallet + controls
-  Page1Trading.tsx       engine/quoting/agent controls, BTC chart, markets, book
-  Page2Hedge.tsx         book cards, P&L chart, per-tenor, stress, knobs, log
-  Page3Backtest.tsx      3-engine P&L comparison (Stoikov vs fixed spread)
-  Page4Live.tsx          live demo: account equity, sentiment, hedge-mode toggle
-  useSimulation.ts / useLivePrice.ts / useLiveBackend.ts
-server/                  Node/Express backend: live Binance demo feed + sim +
-                         signed demo perp orders (binance/config/hedger/runner)
+src/sim/                deterministic core (no React, no I/O)
+  rng.ts                seedable mulberry32 + named sub-streams
+  math.ts               log-sum-exp / softplus / normal CDF (numerically stable)
+  events.ts             digital probability P(BTC(t+τ) ≥ K) and dp/dS
+  engines/              LMSR · CPMM · LS-LMSR behind one interface
+  quoting.ts            manual spread + Avellaneda–Stoikov overlay
+  market.ts             rolling tenors, strike ladder, order book, pair-minting
+  agents/               behavioral population (default) · simple v1 (rollback)
+  hedging.ts            aggregate δ, σ√τ flatten rule, books A/B/C, P&L split
+  breakeven.ts          64-window break-even harness
+  experiment.ts         BTC-outcome stress across hedge modes
+  backtest.ts           multi-seed engine comparison
+src/ui/                 React dashboard (5 pages)
+server/                 Node/Express: live feed, signed demo perp orders,
+                        A/B window ledger → CSV
 ```
 
-## Golden rules enforced
+**The traders.** The default `behavioral` population is ~95 persistent agents
+with sporadic Poisson arrivals (most ticks see no trade), heavy-tailed sizes,
+patience (limit vs market), archetypes spanning noise / momentum / contrarian /
+informed with a favorite-longshot bias, and **finite wallets acting as a reward
+function** — agents who lose drop out, winners size up. Their skill-weighted net
+positioning becomes a smart-money sentiment signal, which is what the sentiment
+hedge mode trades on.
 
-1. **Inventory-priced AMM** — the binary engine price is a function of inventory
-   `q` only; the **live Binance feed is the source of truth** for the BTC
-   underlying (marking/settlement/agents) but is never a *quote* input.
-2. **Only engine trades move price** — order placement alone does not.
-3. **User↔user trades are price-neutral** — pair-minting; only user↔engine flow
-   (incl. arbitrage) moves `q`.
-4. **No real money; demo venue only** — the live backend places real **demo**
-   perp orders (mainnet hard-blocked, `DRY_RUN` default); browser-sim hedge
-   books remain in-memory notionals with modelled fees + funding.
-5. **Quoting never mutates `q`** — Stoikov/spread change displayed quotes only.
-6. **Sim vs deployment honesty** — in sim the true GBM σ is hidden ground truth;
-   live, est-σ is realised from real returns. Only **Book C** (est-σ) is
-   deployable — A/B use a σ you don't have live. Inputs tagged
-   `sim-ground-truth` vs `deployment-available`.
+**Design rules held throughout.** The engine prices binaries from inventory `q`
+only — it never anchors quotes to the feed, because anchoring replaces the AMM
+mechanism with an oracle. Only trades against the engine move price; user↔user
+trades pair-mint and are price-neutral. The quoting overlay changes displayed
+quotes and never mutates `q`. Every input is tagged `sim-ground-truth` or
+`deployment-available` so a "deployable" mechanism can't secretly read the true
+volatility.
 
-## The three hedge books
+---
 
-- **A — pure δ hedge (true σ):** full neutralisation, ground-truth delta.
-- **B — ride bias (true σ, dial h):** carries part of the crowd signal (h<1).
-- **C — pure δ hedge (approx σ):** deployment-realistic, uses estimated σ.
+## What this does *not* establish
 
-A vs B isolates *policy*; A vs C isolates *deployment realism* (vol
-mis-estimation). All three share one market-making book and differ only in the
-hedge leg, so the P&L decomposition (spread capture · inventory · hedge · fees ·
-funding) is directly comparable.
+The honest limits, because they decide whether any of this survives contact with
+production:
 
-## Agent models (swappable)
+- **Calm markets lose money on hedging.** Fees and spread on each round trip
+  exceed what the hedge saves when nothing moves. The hedge earns its keep in
+  volatility, which is why the risk-tier dial exists.
+- **The simulated hedge is too kind.** Fills happen at mark with no slippage,
+  latency or market impact, so simulation *overstates* effectiveness. Only the
+  demo-venue A/B ledger measures the real thing.
+- **A standalone 5-minute binary is the hardest case to hedge.** Near expiry a
+  digital's terminal risk is gamma, not delta: `dp/dS` diverges around the strike
+  and a linear perp cannot hedge it at any size. The fix is a σ√τ flatten rule
+  plus an expiry lockout — i.e. *stop* hedging — not a bigger position. Real
+  value comes from hedging the aggregate across tenors.
+- **Determinism ends at the feed.** The pure sim reproduces exactly from
+  `config.seed`; live mode does not, and the headless tools force the synthetic
+  price for that reason.
 
-Toggle on the Trading / 5m pages; both reference the spot (live or synthetic) +
-estimated σ — no external data beyond the price feed.
+## Deeper reading
 
-- **`behavioral`** (default) — a persistent ~95-trader population: **sporadic
-  Poisson arrivals** (most ticks have no trade), heavy-tailed sizes, patience
-  (limit vs market), archetypes noise / momentum / contrarian / informed with a
-  favorite-longshot bias, **finite wallets as a reward function** (broke→drop
-  out, winners→bigger), and a **skill-weighted sentiment** signal.
-- **`simple`** — the original v1 agents (noise / directional / arbitrageur),
-  preserved verbatim for rollback and A/B comparison.
+| Doc | What's in it |
+|---|---|
+| [`docs/experiment-results.md`](docs/experiment-results.md) | the hedging experiment: method, full sweep, findings |
+| [`docs/hedging-validation-and-qa.md`](docs/hedging-validation-and-qa.md) | effectiveness verdict, break-even acceptance test, gamma wall |
+| [`docs/ab-protocol.md`](docs/ab-protocol.md) | pre-registered hedged-vs-unhedged A/B: metric, exclusions, criteria |
+| [`docs/engines.md`](docs/engines.md) · [`docs/quoting.md`](docs/quoting.md) · [`docs/hedging.md`](docs/hedging.md) | the maths, per layer |
+| [`docs/agents.md`](docs/agents.md) · [`docs/agents-implementation.md`](docs/agents-implementation.md) | trader population and reward design |
+| [`docs/decisions.md`](docs/decisions.md) | *why* each locked decision was made |
+| [`docs/STATUS.md`](docs/STATUS.md) | current state and scope |
 
-## Wallets & sentiment
-
-- **User wallet** (5m page): finite cash, position, equity, P&L.
-- **Agent wallets**: per-roll settlement P&L; broke agents drop out, winners
-  trade bigger — the reward signal, shown in the agent-population panel.
-- **Information sentiment**: skill(wealth)-weighted net agent positioning →
-  smart-money `pSent`/lean, which can drive a **sentiment hedge mode** (perp ∝
-  lean) on the Live tab. See `docs/agents-implementation.md` for the deferred
-  advanced reward + precision-weighted estimator.
-
-## Determinism
-
-The pure sim is reproducible from `config.seed`. **Live mode is not** — it's
-driven by the real Binance feed. Headless backtest/validate force the synthetic
-price for reproducibility.
+TypeScript end to end · React + Recharts · Node/Express · no real money, demo venue only.

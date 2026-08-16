@@ -12,7 +12,7 @@ import type { Simulation } from '../sim/sim';
 import type { SimState, HedgeBookState } from '../sim/types';
 import { digitalProb } from '../sim/events';
 import { Slider } from './widgets';
-import { fmt, usd, usd2, cls, ticksToClock } from './format';
+import { fmt, usd, usd2, cls, ticksToClock, priceDomain, priceTick } from './format';
 
 const SHOCKS = [-0.05, -0.03, -0.01, 0.01, 0.03, 0.05];
 
@@ -63,6 +63,10 @@ export function Page2Hedge({
     hedge: p.hedgePnl,
     funding: p.funding,
   }));
+  // Observed BTC span drives the right axis' tick precision (see priceTick).
+  const btcVals = pnlData.map((d) => d.btc).filter((v) => Number.isFinite(v));
+  const btcSpan = btcVals.length ? Math.max(...btcVals) - Math.min(...btcVals) : 0;
+  const btcDomain = priceDomain(btcVals);
 
   const nextRoll = Math.min(...state.markets.map((m) => m.tauTicks), Infinity);
 
@@ -124,9 +128,9 @@ export function Page2Hedge({
             <XAxis dataKey="t" tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b" />
             <YAxis yAxisId="pnl" tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b"
               width={60} tickFormatter={(v) => usd(v)} />
-            <YAxis yAxisId="btc" orientation="right" domain={['auto', 'auto']}
-              tick={{ fill: '#6b6b40', fontSize: 10 }} stroke="#232a3b" width={48}
-              tickFormatter={(v) => (v / 1000).toFixed(0) + 'k'} />
+            <YAxis yAxisId="btc" orientation="right" domain={btcDomain}
+              tick={{ fill: '#6b6b40', fontSize: 10 }} stroke="#232a3b" width={62}
+              tickFormatter={priceTick(btcSpan)} />
             <Tooltip contentStyle={{ background: '#131722', border: '1px solid #232a3b', borderRadius: 8, fontSize: 12 }}
               labelStyle={{ color: '#8a93a6' }} formatter={(v, n) => [n === 'btc' ? '$' + fmt(Number(v), 0) : usd2(Number(v)), n]} />
             <ReferenceLine yAxisId="pnl" y={0} stroke="#3a4357" />

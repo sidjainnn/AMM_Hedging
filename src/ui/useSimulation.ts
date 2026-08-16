@@ -4,6 +4,10 @@ import { defaultConfig } from '../sim/config';
 import { useLivePrice } from './useLivePrice';
 import type { SimState } from '../sim/types';
 
+// Static-showcase build flag (set by the GitHub Pages workflow). Off in normal
+// dev/prod builds, where the live Binance feed is the source of truth.
+export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === '1';
+
 // Drives the deterministic tick loop in REAL TIME and surfaces the latest
 // snapshot to React. 1 tick = 1 market-second, so at 1x one real second
 // advances one market-second; `speed` multiplies that (2x, 5x, ...).
@@ -21,7 +25,13 @@ export function useSimulation() {
 
   // Live BTC price (external-price mode). Synthetic GBM is off by default now;
   // the live feed is the single price source of truth.
-  const external = !!defaultConfig.externalPrice;
+  //
+  // EXCEPT in the static demo build (VITE_DEMO_MODE=1, used for the GitHub Pages
+  // deployment): there is no backend to serve the Binance feed, so the sim falls
+  // back to its own seeded GBM — the same synthetic process the headless
+  // backtest/validate tools use. The UI labels this clearly (see App.tsx); it is
+  // a showcase build, NOT the configuration any research result was taken from.
+  const external = DEMO_MODE ? false : !!defaultConfig.externalPrice;
   const { priceRef, source, sourceRef } = useLivePrice(external);
   const seededRef = useRef(false);
 

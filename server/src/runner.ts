@@ -281,6 +281,7 @@ export class Runner {
         spread: c?.spreadCapture ?? 0,
         inv: c?.inventoryPnl ?? 0,
         equity: this.account?.equity ?? null,
+        hedgePnlCum: this.hedger.hedgePnl(this.futuresMarkPrice), // hedger-tracked, exact at boundary
         fees: this.hedger.feesPaid,
         slippage: this.hedger.slippagePaid,
         fills: this.hedger.fillCount,
@@ -293,7 +294,10 @@ export class Runner {
           effectiveGate: this.effectiveGate,
         });
       }
-      this.ledger.open({ ...snap, strike: mkt5.strike } as WindowBaseline);
+      // the just-opened window is a "transition" window when it's the FIRST
+      // unhedged window after a hedged block (flatten P&L bleeds across here).
+      const isTransition = this.abRunning && this.abPos === config.abBlocksOn;
+      this.ledger.open({ ...snap, strike: mkt5.strike } as WindowBaseline, isTransition);
       this.ledgerMktId = mkt5.id;
     }
 
