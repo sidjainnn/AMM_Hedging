@@ -58,6 +58,11 @@ export function useLiveBackend(active: boolean) {
     // instructions instead, which is the correct thing to show there anyway.
     if (!active || DEMO_MODE) {
       wsRef.current?.close();
+      // react-hooks/set-state-in-effect warns about cascading renders. This is a
+      // teardown path that runs once when the hook goes inactive (or never, in a
+      // normal build) — it marks the connection dead so the UI stops claiming
+      // "connected". There is no cascade: nothing re-triggers this effect.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConnected(false);
       return;
     }

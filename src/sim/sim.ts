@@ -84,6 +84,16 @@ export class Simulation {
   setAgents(patch: Partial<Pick<SimConfig, 'noiseIntensity' | 'directionalIntensity' | 'arbIntensity'>>): void {
     Object.assign(this.cfg, patch);
   }
+  // Reseed the deterministic RNG. Callers should follow with reset() to rebuild
+  // the world from the new seed — setting it alone changes nothing already drawn.
+  setSeed(seed: number): void {
+    this.cfg.seed = seed;
+  }
+  // Starting spot for the next reset(); used in live mode to seed markets at the
+  // first real price rather than the config default.
+  setBtcStart(spot: number): void {
+    this.cfg.btcStart = spot;
+  }
   // push the latest live price (external-price mode); consumed next step().
   feedPrice(spot: number): void {
     this.price.feed(spot);

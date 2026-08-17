@@ -33,6 +33,12 @@ export function Page3Backtest() {
   // yield (setTimeout) so React paints the loading state before the main thread
   // blocks — otherwise the click looks frozen / dead.
   useEffect(() => {
+    // react-hooks/set-state-in-effect warns about cascading renders. The extra
+    // render is the entire point here: it paints "Running…" before the
+    // setTimeout callback blocks the main thread for the duration of the
+    // backtest. Removing it doesn't avoid a render, it just means the user
+    // stares at a frozen page instead of a loading state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRunning(true);
     const id = setTimeout(() => {
       const seeds = Array.from(

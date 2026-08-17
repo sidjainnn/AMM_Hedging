@@ -61,6 +61,48 @@ async function signedRequest<T>(
 }
 
 // ======================================================
+// BINANCE RESPONSE SHAPES
+// ======================================================
+// Only the fields this service actually reads. Binance sends numbers as
+// strings, so these are typed as strings and parsed at the call site — typing
+// them as `number` would silently produce NaN instead of a type error.
+
+interface PremiumIndexResponse {
+  markPrice: string;
+}
+
+interface ExchangeFilter {
+  filterType: string;
+  stepSize?: string;
+  minQty?: string;
+  tickSize?: string;
+  notional?: string;
+  minNotional?: string;
+}
+
+interface ExchangeSymbol {
+  symbol: string;
+  quantityPrecision: number;
+  filters: ExchangeFilter[];
+}
+
+interface ExchangeInfoResponse {
+  symbols: ExchangeSymbol[];
+}
+
+interface PositionRisk {
+  symbol: string;
+  positionAmt: string;
+}
+
+interface AccountResponse {
+  totalWalletBalance: string;
+  totalUnrealizedProfit: string;
+  totalMarginBalance: string;
+  availableBalance: string;
+}
+
+// ======================================================
 // MARKET DATA (THIS IS THE FIX YOU NEEDED)
 // ======================================================
 
@@ -78,7 +120,7 @@ export async function getSpotPrice(): Promise<number> {
 // 2. FUTURES MARK PRICE (for hedging + risk engine)
 // THIS replaces your incorrect /ticker/price usage
 export async function getFuturesMarkPrice(): Promise<number> {
-  const r = await publicGet<any>(
+  const r = await publicGet<PremiumIndexResponse>(
     config.futuresBase,
     '/fapi/v1/premiumIndex',
     { symbol: config.symbol }
@@ -121,24 +163,36 @@ let filtersCache: SymbolFilters | null = null;
 export async function getFilters(): Promise<SymbolFilters> {
   if (filtersCache) return filtersCache;
 
-  const info = await publicGet<any>(
+  const info = await publicGet<ExchangeInfoResponse>(
     config.futuresBase,
     '/fapi/v1/exchangeInfo'
   );
 
-  const sym = info.symbols.find((s: any) => s.symbol === config.symbol);
+  const sym = info.symbols.find((s) => s.symbol === config.symbol);
   if (!sym) throw new Error(`symbol ${config.symbol} not found`);
 
-  const lot = sym.filters.find((f: any) => f.filterType === 'LOT_SIZE');
-  const price = sym.filters.find((f: any) => f.filterType === 'PRICE_FILTER');
+  const lot = sym.filters.find((f) => f.filterType === 'LOT_SIZE');
+  const price = sym.filters.find((f) => f.filterType === 'PRICE_FILTER');
   const notional = sym.filters.find(
-    (f: any) => f.filterType === 'MIN_NOTIONAL'
+    (f) => f.filterType === 'MIN_NOTIONAL'
   );
+
+  // LOT_SIZE and PRICE_FILTER decide how orders are rounded, so we cannot size
+  // a hedge safely without them. Fail loudly here rather than let `undefined`
+  // reach parseFloat — that produced a NaN stepSize and a cryptic
+  // "Cannot read properties of undefined" further down the order path.
+  if (!lot?.stepSize || !lot?.minQty) {
+    throw new Error(`${config.symbol}: exchangeInfo returned no usable LOT_SIZE filter`);
+  }
+  if (!price?.tickSize) {
+    throw new Error(`${config.symbol}: exchangeInfo returned no usable PRICE_FILTER`);
+  }
 
   filtersCache = {
     stepSize: parseFloat(lot.stepSize),
     minQty: parseFloat(lot.minQty),
     tickSize: parseFloat(price.tickSize),
+    // MIN_NOTIONAL is optional on some venues; $5 is Binance's documented floor.
     minNotional: parseFloat(
       notional?.notional ?? notional?.minNotional ?? '5'
     ),
@@ -156,7 +210,7 @@ export function roundToStep(qty: number, step: number): number {
 // ACCOUNT / TRADING (UNCHANGED)
 // -----------------------------
 export async function getPositionUnits(): Promise<number> {
-  const r = await signedRequest<any[]>(
+  const r = await signedRequest<PositionRisk[]>(
     config.futuresBase,
     'GET',
     '/fapi/v2/positionRisk',
@@ -179,7 +233,7 @@ export interface FuturesAccount {
 }
 
 export async function getAccount(): Promise<FuturesAccount> {
-  const r = await signedRequest<any>(config.futuresBase, 'GET', '/fapi/v2/account', {});
+  const r = await signedRequest<AccountResponse>(config.futuresBase, 'GET', '/fapi/v2/account', {});
   return {
     walletBalance: parseFloat(r.totalWalletBalance),
     unrealizedPnl: parseFloat(r.totalUnrealizedProfit),

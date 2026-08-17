@@ -12,16 +12,33 @@ export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === '1';
 // snapshot to React. 1 tick = 1 market-second, so at 1x one real second
 // advances one market-second; `speed` multiplies that (2x, 5x, ...).
 export function useSimulation() {
-  const simRef = useRef<Simulation>(new Simulation({ ...defaultConfig }));
-  const [state, setState] = useState<SimState>(() => simRef.current.getState());
+  // One Simulation instance for the lifetime of the hook. Held in state (with a
+  // lazy initialiser) rather than a ref: the identity never changes, so this is
+  // a value the render output may legitimately depend on, and reading it during
+  // render is safe in a way that reading a ref is not.
+  const [sim] = useState(() => new Simulation({ ...defaultConfig }));
+  const [state, setState] = useState<SimState>(() => sim.getState());
   const [running, setRunning] = useState(true);
   const [speed, setSpeed] = useState(1);
   const [seed, setSeed] = useState(defaultConfig.seed);
 
+  // The tick loop below runs inside a single long-lived setInterval, so it can't
+  // close over `running`/`speed` directly — it would capture the values from the
+  // render that created it. Mirroring them into refs lets the loop read the
+  // current values without resubscribing (which would reset tick timing).
+  //
+  // The mirroring happens in an effect, not during render: a render can be
+  // discarded (StrictMode's double-render, concurrent rendering, the React
+  // Compiler), and writing a ref from one that never commits would leave the
+  // loop reading a value the UI never actually showed.
   const runningRef = useRef(running);
   const speedRef = useRef(speed);
-  runningRef.current = running;
-  speedRef.current = speed;
+  useEffect(() => {
+    runningRef.current = running;
+  }, [running]);
+  useEffect(() => {
+    speedRef.current = speed;
+  }, [speed]);
 
   // Live BTC price (external-price mode). Synthetic GBM is off by default now;
   // the live feed is the single price source of truth.
@@ -60,44 +77,44 @@ export function useSimulation() {
         }
         if (!seededRef.current) {
           // seed markets at the first live price, then start
-          simRef.current.cfg.btcStart = p;
-          simRef.current.reset();
+          sim.setBtcStart(p);
+          sim.reset();
           seededRef.current = true;
-          setState(simRef.current.getState());
+          setState(sim.getState());
           return;
         }
-        simRef.current.feedPrice(p);
+        sim.feedPrice(p);
       }
 
       acc += dt * speedRef.current;
       let stepped = 0;
       while (acc >= MS_PER_TICK && stepped < 5000) {
-        simRef.current.step();
+        sim.step();
         acc -= MS_PER_TICK;
         stepped++;
       }
-      if (stepped > 0) setState(simRef.current.getState());
+      if (stepped > 0) setState(sim.getState());
     }, 100);
     return () => clearInterval(id);
-  }, [external, priceRef, sourceRef]);
+  }, [external, priceRef, sourceRef, sim]);
 
-  const sync = useCallback(() => setState(simRef.current.getState()), []);
+  const sync = useCallback(() => setState(sim.getState()), [sim]);
 
   const reset = useCallback(
     (newSeed?: number) => {
       const s = newSeed ?? seed;
-      simRef.current.cfg.seed = s;
+      sim.setSeed(s);
       setSeed(s);
       // in live mode, re-seed markets at the current live price on next tick
       if (external) seededRef.current = false;
-      simRef.current.reset();
+      sim.reset();
       sync();
     },
-    [seed, sync, external]
+    [seed, sync, external, sim]
   );
 
   return {
-    sim: simRef.current,
+    sim,
     state,
     running,
     setRunning,

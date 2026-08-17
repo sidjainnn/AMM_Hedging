@@ -74,6 +74,24 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
   const [wallet, setWallet] = useState(1000); // finite cash; resolves credit back on settlement
   const [showControls, setShowControls] = useState(true);
 
+  // ── accumulator refs ──────────────────────────────────────────────────────
+  // histRef / labSeries / labGateOn accumulate per-tick series that are written
+  // in the tick effects below and read during render to feed the charts.
+  //
+  // They are refs rather than state on purpose. This component already
+  // re-renders every tick (state.tick changes), and the sim runs at up to 30
+  // ticks/sec at 30× speed; holding the series in state would add a second
+  // render per tick purely to store data the existing render already has.
+  //
+  // react-hooks/refs flags reading them during render, which is the correct
+  // general rule — a ref read during render isn't tracked as a dependency. It's
+  // safe here because every write is paired with a state.tick change that
+  // re-renders anyway, so the render never shows a stale series. Those reads
+  // carry a targeted eslint-disable pointing back at this note.
+  //
+  // If this is ever converted to state, drop the suppressions rather than
+  // keeping them.
+
   // per-market probability history (resets each roll)
   const histRef = useRef<{ t: number; yes: number }[]>([]);
   const [, force] = useState(0);
@@ -148,11 +166,18 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
       combined: combinedTarget,
       gated: labGateOn.current ? combinedTarget : 0,
     };
-    const row: any = { t: state.tick };
-    for (const st of LAB_STRATS) {
-      obReconcile(labBooks.current[st], targets[st], spot);
-      row[st] = common + obPnl(labBooks.current[st], spot);
-    }
+    // Reconcile each strategy's book, then record its P&L. Built via
+    // fromEntries over LAB_STRATS so the row is a complete Record by
+    // construction — no partial type and no cast.
+    const row = {
+      t: state.tick,
+      ...(Object.fromEntries(
+        LAB_STRATS.map((st) => {
+          obReconcile(labBooks.current[st], targets[st], spot);
+          return [st, common + obPnl(labBooks.current[st], spot)];
+        })
+      ) as Record<LabStrat, number>),
+    };
     labSeries.current = [...labSeries.current, row].slice(-600);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.tick]);
@@ -464,6 +489,7 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
         <div className="panel" style={{ flex: 2, minWidth: 420 }}>
           <h3>YES probability <span className="hint">· this market, since it opened</span></h3>
           <ResponsiveContainer width="100%" height={240}>
+            {/* eslint-disable-next-line react-hooks/refs -- see "accumulator refs" note at top of file */}
             <AreaChart data={histRef.current} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
               <defs>
                 <linearGradient id="yesg" x1="0" y1="0" x2="0" y2="1">
@@ -594,6 +620,7 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
       {/* Hedge Risk Lab — does hedging reduce risk on THIS flow? */}
       {(() => {
         const S = labSeries.current;
+        // eslint-disable-next-line react-hooks/refs -- see "accumulator refs" note at top of file
         if (S.length < 5) return (
           <div className="panel"><h3>Hedge risk lab <span className="hint">· collecting data…</span></h3></div>
         );
@@ -601,11 +628,13 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
           const arr = S.map((r) => r[st]);
           return { net: arr[arr.length - 1], vol: stdevInc(arr), dd: maxDD(arr) };
         };
+        // eslint-disable-next-line react-hooks/refs -- see "accumulator refs" note at top of file
         const m = Object.fromEntries(LAB_STRATS.map((st) => [st, metric(st)])) as Record<LabStrat, ReturnType<typeof metric>>;
         const baseDD = m.none.dd || 1e-9;
         const baseVol = m.none.vol || 1e-9;
         return (
           <div className="panel">
+            {/* eslint-disable-next-line react-hooks/refs -- see "accumulator refs" note at top of file */}
             <h3>Hedge risk lab <span className="hint">· same agent flow, five perp overlays sized to ${LAB_BUDGET} · vol {(labVol * 100).toFixed(3)}% (gate {(LAB_VOL_THRESHOLD * 100).toFixed(3)}%, {labGateOn.current ? 'ARMED' : 'idle'}) · does hedging cut risk?</span></h3>
             <div className="row" style={{ gap: 16 }}>
               <div style={{ flex: 1, minWidth: 320 }}>
@@ -631,6 +660,7 @@ export function Page5Market({ sim, state, refresh }: { sim: Simulation; state: S
               </div>
               <div style={{ flex: 1, minWidth: 320 }}>
                 <ResponsiveContainer width="100%" height={180}>
+                  {/* eslint-disable-next-line react-hooks/refs -- see "accumulator refs" note at top of file */}
                   <LineChart data={S} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
                     <XAxis dataKey="t" tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b" />
                     <YAxis tick={{ fill: '#8a93a6', fontSize: 10 }} stroke="#232a3b" width={50} tickFormatter={(v) => usd(Number(v))} />
